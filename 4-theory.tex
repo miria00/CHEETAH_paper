@@ -1,0 +1,428 @@
+% \section{Theoretical Analysis}
+% \label{sec:theory}
+
+% This appendix provides formal analysis of the V1 LP formulation.
+
+% \subsection{Exactness of McCormick Linearization}
+
+% \begin{proposition}
+% \label{prop:mccormick_exact}
+% Let $y \in \{0,1\}$ and $p \in \{0,1\}$. Define $w$ by the McCormick constraints:
+% $w \leq y$, $w \leq p$, $w \geq y + p - 1$, $w \geq 0$.
+% Then $w = y \cdot p$.
+% \end{proposition}
+
+% \begin{proof}
+% There are four cases. If $y=0$: the constraints give $w \leq 0$ and $w \geq 0$, so $w = 0 = 0 \cdot p$. If $p=0$: symmetrically, $w = 0$. If $y = p = 1$: $w \leq 1$, $w \geq 1$, so $w = 1$. This covers all cases.
+% \end{proof}
+
+% This means that at any integer-feasible point of the V1 LP, the McCormick auxiliary variables $w_{i,c,k}$ exactly represent the bilinear products $y_{i,c} \cdot p_{\text{assoc}(i,k), o(i)}$, and the LP objective value equals the true joint tiling-fusion objective.
+
+% \subsection{LP Relaxation Quality}
+
+% When solved as a continuous LP (all variables in $[0,1]$), the McCormick linearization provides the tightest possible convex relaxation of the bilinear term over the unit box.
+
+% \begin{proposition}
+% The McCormick envelope of $f(y,p) = y \cdot p$ over $[0,1]^2$ is the convex envelope.
+% \end{proposition}
+
+% \begin{proof}
+% The convex envelope of a bilinear function over a box is the maximum of the two underestimators $\max(0, y + p - 1)$, which is exactly the McCormick lower bound. Similarly, the concave envelope is $\min(y, p)$. This is a classical result (McCormick, 1976).
+% \end{proof}
+
+% This implies that the V1 LP relaxation provides the best possible lower bound achievable by any convex relaxation of the bilinear tiling-fusion interaction. The relaxation gap (difference between LP optimum and integer optimum) depends on problem structure; we report empirical gap measurements in the experiments.
+
+% \subsection{Structural Invariance of the Constraint Matrix}
+
+% \begin{proposition}
+% \label{prop:invariance}
+% For a fixed neural network model with $L$ operations, $T$ timesteps, $|\mathcal{E}|$ edges, and $|\mathcal{C}_i|$ Pareto configurations per operation, the sparsity pattern (row indices, column indices) of the V1 constraint matrix $A$ is invariant across all hardware configurations proposed by Vizier. Only the numerical values of $A$, the objective vector $c$, and the constraint bounds $l_c, u_c$ change.
+% \end{proposition}
+
+% \begin{proof}
+% The constraint matrix structure is determined by the graph topology (which defines edges $\mathcal{E}$, execution order $o(i)$, and fan-in/fan-out sets), the number of Pareto configurations $|\mathcal{C}_i|$, and the timestep count $T$---all of which depend only on the neural network model, not on hardware parameters. Hardware parameters affect $\Tmax_i(c)$, $\Tmin_i(c)$, $t_i^k(c)$, $d_e$, $d_i^W$, $\CGM$, and $c_i^{\text{remat}}$, which enter as numerical coefficients. The assignment, McCormick, capacity, persistence, and boundary constraints all have the same variable participation pattern regardless of these coefficients.
+% \end{proof}
+
+% This invariance has practical implications: LP solver preconditioners can be factored once per model and reused across all hardware trials, and warm-starting from a previous trial's solution is straightforward since the variable ordering is stable.
+
+% \subsection{NNZ Breakdown}
+
+% Table~\ref{tab:nnz_breakdown} provides a detailed breakdown of nonzeros in the V1 constraint matrix.
+
+% \begin{table}[h]
+% \centering
+% \caption{NNZ breakdown by constraint block for V1 on EfficientNet-B7 ($L=400$, $T=400$, $|\mathcal{C}_i|=1{,}000$).}
+% \label{tab:nnz_breakdown}
+% \small
+% \begin{tabular}{lrl}
+% \toprule
+% \textbf{Constraint Block} & \textbf{Est. NNZ} & \textbf{Source} \\
+% \midrule
+% One-config-per-op & 400,000 & $L \times |\mathcal{C}|$ \\
+% Exec.\ time upper bound & 4,800,000 & $|\mathcal{C}| \times 4$ terms per op \\
+% Exec.\ time lower bound & 400,000 & $|\mathcal{C}|$ terms per op \\
+% McCormick linearization & 7,200,000 & $3 \times 2 \times L|\mathcal{C}| \times 3$ \\
+% Global memory capacity & 320,000 & $T \times (|\mathcal{E}| + L)$ \\
+% Activation persistence & 800,000 & $|\mathcal{E}| \times T \times 2$ \\
+% Weight monotonicity & 320,000 & $L \times T \times 2$ \\
+% Remat feasibility & 640,000 & Several $L \times T$ blocks \\
+% Boundary conditions & 800,000 & $|\mathcal{E}| \times T + L \times T$ \\
+% \midrule
+% \textbf{Total} & $\mathbf{\sim 15.7\text{M}}$ & \\
+% \bottomrule
+% \end{tabular}
+% \end{table}
+
+% \subsection{Complexity of the Pareto Pre-Pass}
+
+% \begin{proposition}
+% The precomputation cost of the Pareto pruning pass is $O(L \cdot |\mathcal{C}_{\text{raw}}| \cdot t_{\text{Timeloop}})$ per hardware configuration class, where $|\mathcal{C}_{\text{raw}}| = O(10^7)$ is the raw configuration count and $t_{\text{Timeloop}}$ is the average Timeloop evaluation time. With bandwidth-invariant Pareto fronts, this cost is amortized across all Vizier trials sharing the same compute configuration.
+% \end{proposition}
+
+% For EfficientNet-B7: $400 \times 1{,}000 = 400{,}000$ Timeloop evaluations (after pruning), at ${\sim}5$ seconds each, totaling ${\sim}23$ hours on a single machine or ${\sim}30$ minutes with 512-way parallelism.
+
+% page edit
+
+\section{Theoretical Analysis}
+\label{sec:theory}
+
+This appendix provides formal analyses of the CHEETAH-V1 LP formulation.
+
+\subsection{Exactness of McCormick Linearization}
+
+\begin{proposition}
+\label{prop:mccormick_exact}
+Let $y \in \{0,1\}$ and $p \in \{0,1\}$. Define $w$ by the McCormick constraints:
+$w \leq y$, $w \leq p$, $w \geq y + p - 1$, $w \geq 0$.
+Then $w = y \cdot p$.
+\end{proposition}
+
+\begin{proof}
+There are four cases. If $y=0$: the constraints give $w \leq 0$ and $w \geq 0$, so $w = 0 = 0 \cdot p$. If $p=0$: symmetrically, $w = 0$. If $y = p = 1$: $w \leq 1$, $w \geq 1$, so $w = 1$. This covers all cases.
+\end{proof}
+
+This means that at any integer-feasible point of the V1 LP, the McCormick auxiliary variables $w_{i,c,k}$ exactly represent the bilinear products $y_{i,c} \cdot p_{\text{assoc}(i,k), o(i)}$, and the LP objective value equals the true joint tiling-fusion objective.
+
+\subsection{LP Relaxation Quality}
+
+When solved as a continuous LP (all variables in $[0,1]$), the McCormick linearization provides the tightest possible convex relaxation of the bilinear term over the unit box.
+
+\begin{proposition}
+The McCormick envelope of $f(y,p) = y \cdot p$ over $[0,1]^2$ is the convex envelope.
+\end{proposition}
+
+\begin{proof}
+The convex envelope of a bilinear function over a box is the maximum of the two underestimators $\max(0, y + p - 1)$, which is exactly the McCormick lower bound. Similarly, the concave envelope is $\min(y, p)$. This is a classical result~\citep{mccormick1976computability}.
+\end{proof}
+
+This implies that the V1 LP relaxation provides the best possible lower bound achievable by any convex relaxation of the bilinear tiling-fusion interaction. The relaxation gap (difference between LP optimum and integer optimum) depends on problem structure; we report empirical gap measurements in the experiments.
+
+\subsection{Structural Invariance of the Constraint Matrix}
+\label{app:invar}
+
+\begin{proposition}
+\label{prop:invariance}
+For a fixed neural network model with $L$ operations, $T$ timesteps, $|\mathcal{E}|$ edges, and $|\mathcal{C}_i|$ Pareto configurations per operation, the sparsity pattern (row indices, column indices) of the V1 constraint matrix $A$ is invariant across all hardware configurations proposed by Vizier. Only the numerical values of $A$, the objective vector $c$, and the constraint bounds $l_c, u_c$ change.
+\end{proposition}
+
+\begin{proof}
+The constraint matrix structure is determined by the graph topology (which defines edges $\mathcal{E}$, execution order $o(i)$, and fan-in/fan-out sets), the number of Pareto configurations $|\mathcal{C}_i|$, and the timestep count $T$, all of which depend only on the neural network model, not on hardware parameters. Hardware parameters affect $\Tmax_i(c)$, $\Tmin_i(c)$, $t_i^k(c)$, $d_e$, $d_i^W$, $\CGM$, and $c_i^{\text{remat}}$, which enter as numerical coefficients. The assignment, McCormick, capacity, persistence, and boundary constraints all have the same variable participation pattern regardless of these coefficients.
+\end{proof}
+
+This invariance has practical implications: LP solver preconditioners can be factored once per model and reused across all hardware trials, and warm-starting from a previous trial's solution is straightforward since the variable ordering is stable.
+
+\subsection{NNZ Breakdown}
+
+Table~\ref{tab:nnz_breakdown} provides a detailed breakdown of nonzeros in the V1 constraint matrix.
+
+\begin{table}[h]
+\centering
+\caption{NNZ breakdown by constraint block for V1 on EfficientNet-B7 ($L=400$, $T=400$, $|\mathcal{C}_i|=1{,}000$).}
+\label{tab:nnz_breakdown}
+\small
+\begin{tabular}{lrl}
+\toprule
+\textbf{Constraint Block} & \textbf{Est. NNZ} & \textbf{Source} \\
+\midrule
+One-config-per-op & 400,000 & $L \times |\mathcal{C}|$ \\
+Exec.\ time upper bound & 4,800,000 & $|\mathcal{C}| \times 4$ terms per op \\
+Exec.\ time lower bound & 400,000 & $|\mathcal{C}|$ terms per op \\
+McCormick linearization & 7,200,000 & $3 \times 2 \times L|\mathcal{C}| \times 3$ \\
+Global memory capacity & 320,000 & $T \times (|\mathcal{E}| + L)$ \\
+Activation persistence & 800,000 & $|\mathcal{E}| \times T \times 2$ \\
+Weight monotonicity & 320,000 & $L \times T \times 2$ \\
+Remat feasibility & 640,000 & Several $L \times T$ blocks \\
+Boundary conditions & 800,000 & $|\mathcal{E}| \times T + L \times T$ \\
+\midrule
+\textbf{Total} & $\mathbf{\sim 15.7\text{M}}$ & \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\subsection{Complexity of the Pareto Pre-Pass}
+
+\begin{proposition}
+The precomputation cost of the Pareto pruning pass is $O(L \cdot |\mathcal{C}_{\text{raw}}| \cdot t_{\text{Timeloop}})$ per hardware configuration class, where $|\mathcal{C}_{\text{raw}}| = O(10^7)$ is the raw configuration count and $t_{\text{Timeloop}}$ is the average Timeloop evaluation time. With bandwidth-invariant Pareto fronts, this cost is amortized across all Vizier trials sharing the same compute configuration.
+\end{proposition}
+
+For EfficientNet-B7: $400 \times 1{,}000 = 400{,}000$ Timeloop evaluations (after pruning), at ${\sim}5$ seconds each, totaling ${\sim}23$ hours on a single machine or ${\sim}30$ minutes with 512-way parallelism.
+
+\subsection{Containment of the Sequential Map--Fuse--Size Pipeline}
+\label{app:containment}
+We show that CHEETAH's joint feasible polytope \emph{contains} every in-scope
+sequential map-then-fuse-then-size pipeline, lifted FAST included: under matched
+hardware parameters and mapper constants, every point feasible for any such pipeline embeds
+objective-preservingly into CHEETAH's joint LP feasible set. CHEETAH therefore
+\emph{strictly generalizes} the sequential pipeline rather than merely extending
+it. Formally, we prove the one-directional statement (\emph{for every
+sequential-pipeline feasible point there exists a CHEETAH-feasible extension
+with equal objective}) rather than a set equality; the extra CHEETAH
+coordinates (a free tile selection, rematerialization, and the CGM one-hot)
+reach points the sequential pipeline cannot express. The result is a modeling
+statement about feasible sets, not a prediction that the two systems report the
+same numerical speedups.
+
+Consider a chip $H$ (MAC count, DRAM bandwidth $b$, $C_{GM}$ size $g$, datatype, batch) and a single workload DAG $G$ with $L$ layers, $E$ edges, $T$ scheduling steps, and constants $T_i^{\min}(c), T_i^{\max}(c), t_i^k(c)$ at $C$ Pareto tile configurations per layer. 
+
+Both modeling formulations include decision variables:
+\begin{itemize}\setlength{\itemsep}{0pt}\setlength{\topsep}{0pt}
+  \item $y \in [0,1]^{L \times C}$ -- tile-config selection per layer, $\sum_c y_{i,c}{=}1$,
+  \item $p \in [0,1]^{E \times T}$ -- activation residency per (edge, timestep),
+  \item $p_W \in [0,1]^{L \times T}$ -- weight residency per (layer, timestep),
+  \item $T \in \mathbb{R}_{\ge 0}^{L}$ -- per-layer cycle count (objective summand).
+\end{itemize}
+The V1 LP additionally inherits $r \in [0,1]^{L \times T}$ (rematerialization) and
+$h_{\mathrm{GM}} \in [0,1]^{K}$ with $\sum_k h_{\mathrm{GM},k}{=}1$ (one-hot global memory selection from a
+discrete grid $g_1,\ldots,g_K$). The primary cycle objective is $\mathbf{c}^\top x = \sum_i T_i$.
+
+\paragraph{In-scope sequential pipelines.}
+\begin{definition}[Sequential map-then-fuse pipeline]
+\label{def:seq_scope}
+Fix $H$, $G$, a topological execution order, and the Timeloop cost constants.
+A \emph{sequential map-then-fuse pipeline} is any procedure that
+(i) in a \emph{mapping stage} commits every layer $i$ to a single tile
+configuration $c_i \in \mathcal{C}_i$ from the shared Pareto menu, by any
+mapper (Timeloop, ZigZag, CoSA, or a hand schedule; a tile outside the menu is
+admitted by adding its cost constants as a column), and only then
+(ii) in a \emph{fusion stage} chooses a static residency pattern $(p, p_W)$
+under the shared $C_{GM}$-capacity and bandwidth model, with the global-memory
+size fixed at some $g \in \{g_1,\ldots,g_K\}$ and without rematerialization.
+Writing $c = (c_1,\ldots,c_L)$, its lifted feasible set in the V1 variable
+space is
+\begin{equation}
+\begin{split}
+\mathcal{F}_S^{\mathrm{lift}}(H,G;c,g) \;=\; \Big\{(y, p, p_W, T) \;\Big|\;
+&\; y_{i,\, c_i} = 1,\quad
+y_{i,\, c'} = 0 \;\;\forall\, c' \ne c_i, \\
+&\; \text{$(p,p_W)$ static, chosen by the fusion stage,}\quad
+A_S\, x \le b_S(H,G;g) \Big\},
+\end{split}
+\end{equation}
+where $A_S$, $b_S$ encode the $C_{GM}$ capacity (with $g$ hard-coded),
+bandwidth, and per-stage compute floor under the fixed-$y$ projection.
+\end{definition}
+Out of scope, by construction, are methods that change the execution
+\emph{order} (the polyhedral reordering axis, Section~\ref{sec:related}), use a
+cost model other than the shared roofline/Timeloop constants, or size hardware
+outside the menu. FAST is the instance $c = c^{\mathrm{FAST}}$ (Timeloop's
+per-op choice) with $g$ its fixed $C_{GM}$:
+$\mathcal{F}_F^{\mathrm{lift}}(H,G) = \mathcal{F}_S^{\mathrm{lift}}(H,G;c^{\mathrm{FAST}},g^{\mathrm{FAST}})$.
+FAST commits to $r{=}0$ and to fixed $g$ by construction.
+
+\paragraph{CHEETAH-V1 LP relaxation $\mathcal{P}_V(H,G)$.}
+$$
+\mathcal{P}_V(H,G) \;=\; \{(y, p, p_W, r, h_{\mathrm{GM}}, T) \in [0,1]^{LC+ET+2LT+K} \times \mathbb{R}_{\ge 0}^{L} \mid A_V\, x \le b_V(H,G)\}.
+$$
+The first $LC + ET + LT$ columns of $A_V$ coincide with $A_S$. The bandwidth
+constraint uses the same $b$, and the $C_{GM}$-capacity row is parameterized by
+the chosen $g_k$ via $h_{\mathrm{GM}}$.
+
+\begin{theorem}[Containment of every in-scope sequential pipeline in $\mathcal{P}_V$]
+\label{thm:containment}
+Fix $H$, $G$, the execution order, and the Timeloop constants. For
+\emph{every} tile commitment $c \in \prod_i \mathcal{C}_i$ and every
+$g \in \{g_1,\ldots,g_K\}$ there exists a lifting map
+$$
+\iota:\; \mathcal{F}_S^{\mathrm{lift}}(H,G;c,g) \;\hookrightarrow\; \mathcal{P}_V(H,G),\qquad
+\iota(y,p,p_W,T) \;=\; \big(y,\,\tilde{p},\,p_W,\,r{=}0,\,h_{\mathrm{GM}}{=}e_{k^\star},\,T\big),
+$$
+with $k^\star$ satisfying $g_{k^\star}{=}g$ and $\tilde{p}_{e,t}{=}1$ exactly on
+the timesteps covered by the fusion stage's region for the edge supplying $e$,
+zero elsewhere. The map is well-defined, injective, and preserves the primary
+cycle objective: $\sum_i T_i \circ\iota(x) = \sum_i T_i(x)$ for every
+$x \in \mathcal{F}_S^{\mathrm{lift}}(H,G;c,g)$. In particular, lifted FAST
+embeds in $\mathcal{P}_V$.
+\end{theorem}
+
+\begin{proof}
+The integer cube embeds into the LP cube, $\{0,1\}^{d} \subset [0,1]^{d}$,
+therefore any integer-feasible $(y,p,p_W)$ lies in $\mathcal{P}_V$ along the
+shared coordinates.
+The lifted $\tilde{p}$ equals $1$ from the producer step through the last step
+of the fused region and $0$ afterwards, hence it is monotone non-increasing
+after production; V1's activation-persistence rows
+$p_{e,t} \le p_{e,t-1} + r_{\mathrm{src}(e),t}$ therefore hold with $r{=}0$,
+and the capacity rows charge exactly the tensors the fusion stage keeps
+resident, so they coincide with $A_S x \le b_S$. Setting $r{=}0$ disables V1's
+rematerialization slack. Setting $h_{\mathrm{GM}}{=}e_{k^\star}$ pins V1's
+$C_{GM}$ constraint to the pipeline's fixed $g$.
+Moreover, the per-stage compute floor evaluates identically because both
+formulations consume the same cost vectors under the singleton-$y$ projection.
+Therefore, $\iota(x) \in \mathcal{P}_V$ for all
+$x \in \mathcal{F}_S^{\mathrm{lift}}(H,G;c,g)$. Nothing in the argument depends
+on \emph{how} $c$ or $(p,p_W)$ were chosen, only on $c_i \in \mathcal{C}_i$, on
+the pattern being static, and on $g$ lying in the menu; the statement therefore
+holds uniformly over the whole class of Definition~\ref{def:seq_scope}.
+
+\emph{Injectivity.} $\iota$ is the identity on the shared coordinates and
+constant on the new coordinates, thus $\iota(x){=}\iota(x') \Rightarrow x{=}x'$.
+
+\emph{Primary-objective preservation.} The primary cycle objective
+$\sum_i T_i$ depends only on the shared coordinate $T$, thus
+$\mathbf{c}^\top \iota(x) = \mathbf{c}^\top x$.
+
+If V1's objective additionally includes an $\varepsilon$-tiebreaker term
+$\varepsilon\sum_k k\, h_{\mathrm{GM},k}$, then on $\iota(x)$ this term equals
+the constant $\varepsilon k^\star$, which does not affect the primary cycle
+optimum or its $\arg\min$ for fixed $g$.
+\end{proof}
+
+\paragraph{Strict generalization, stated crisply.}
+Theorem~\ref{thm:containment} reads: \emph{for every in-scope sequential
+pipeline (Definition~\ref{def:seq_scope}), every feasible point it can produce
+has a CHEETAH-feasible extension with equal primary objective.} CHEETAH's
+feasible set is therefore a superset of the union over all such pipelines,
+$$
+\bigcup_{c,\,g}\;\iota\big(\mathcal{F}_S^{\mathrm{lift}}(H,G;c,g)\big)
+\;\subseteq\; \mathcal{P}_V(H,G),
+$$
+which is the precise sense in which sequential map-then-fuse methods search a
+subset of CHEETAH's decision space. This is an objective-preserving embedding,
+\emph{not} a set equality: CHEETAH carries strictly more degrees of freedom (a
+free tile selection $y$, rematerialization $r$, and the CGM one-hot
+$h_{\mathrm{GM}}$), so each lifted pipeline point lands on a face-restricted
+slice of $\mathcal{P}_V$ and CHEETAH additionally reaches points no sequential
+pipeline can express. Every map-then-fuse-then-size schedule any in-scope
+pipeline can produce is thus reachable inside CHEETAH's single joint program at
+the same cost. Moreover, because every lifted point is integral in $y$, and the
+refinements that distinguish the richer CHEETAH formulations either add
+collapsible variables (V2's per-edge residency and CGM one-hot) or replace a
+bound that is already exact at integer $y$ (the disaggregated epigraph of
+\S\ref{sec:v1}, cf.\ Corollary~\ref{cor:v3_hull}), the same embedding $\iota$
+places every in-scope pipeline inside every CHEETAH formulation V1.
+Containment is therefore a property of the joint program, not of one particular
+variant.
+
+\begin{corollary}[CHEETAH-V1 LP lower bound dominates every in-scope sequential pipeline]
+\label{cor:optimum}
+For every chip $H$, workload $G$, matched Timeloop constants, every tile
+commitment $c$, and every menu size $g$,
+$$
+\min_{x \in \mathcal{P}_V(H,G)}\!\!\mathbf{c}^\top x \;\;\le\;\;
+\min_{x \in \mathcal{F}_S^{\mathrm{lift}}(H,G;c,g)}\!\!\mathbf{c}^\top x,
+\qquad\text{in particular}\qquad
+\min_{x \in \mathcal{P}_V(H,G)}\!\!\mathbf{c}^\top x \;\;\le\;\;
+\min_{x \in \mathcal{F}_F^{\mathrm{lift}}(H,G)}\!\!\mathbf{c}^\top x.
+$$
+Any fixed-hardware performance gap between a sequential pipeline and CHEETAH
+V1 therefore cannot be attributed to sequential solutions lying outside the V1
+search space, and must be due to (i) V1's extra continuous degrees of freedom
+(free $y$, $r$, $h_{\mathrm{GM}}$), (ii) LP relaxation versus integer rounding,
+or (iii) differences in the cost model or baseline normalization.
+The corollary bounds the V1 LP relaxation, not the rounded executable schedule
+(which is reported separately).
+\end{corollary}
+\begin{proof}
+Fix any $c$ and $g$ and let $x_S^\star$ attain the minimum over $\mathcal{F}_S^{\mathrm{lift}}(H,G;c,g)$. By Theorem~\ref{thm:containment},
+$\iota(x_S^\star) \in \mathcal{P}_V$ and $\mathbf{c}^\top \iota(x_S^\star) = \mathbf{c}^\top x_S^\star$; the FAST case is $c = c^{\mathrm{FAST}}$.
+The V1 LP minimum is at most this feasible value.
+\end{proof}
+
+The containment above bounds how CHEETAH relates to the sequential pipeline. The
+next corollary bounds how CHEETAH's own formulations relate to one another,
+tying the certified lower bound to the disaggregated perspective epigraph of
+CHEETAH-V1 (\S\ref{sec:v1}, \eqref{eq:v3_epigraph}).
+
+\begin{corollary}[V3's disaggregated epigraph is the exact hull and tightens the certified bound]
+\label{cor:v3_hull}
+Fix the hardware ($v,u$) and mapper constants. Let the aggregate roofline row of
+CHEETAH-V1 \eqref{eq:v1} be
+$T_i \ge \max\!\big(\sum_c \Tmin_i(c)\,v_{i,c},\; \sum_c (\Tmax_i(c){-}\mathrm{save}_{i,c})\,u_{i,c}\big)$,
+and let \eqref{eq:v3_epigraph} be the disaggregated perspective form with split
+variables $v_{i,c},u_{i,c},\tau_{i,c}$ obeying $\sum_c v_{i,c}{=}v$,
+$\sum_c u_{i,c}{=}u$ and the box links
+$\underline v\,y_{i,c}\le v_{i,c}\le \overline v\,y_{i,c}$,
+$\underline u\,y_{i,c}\le u_{i,c}\le \overline u\,y_{i,c}$.
+Then \eqref{eq:v3_epigraph} is the closed convex hull of the per-op disjunction
+``select one tile $c$ and pay its roofline maximum
+$\max(\Tmin_i(c)\,v,\,(\Tmax_i(c){-}\mathrm{save}_{i,c})\,u)$.'' Consequently:
+\begin{enumerate}\setlength{\itemsep}{0pt}\setlength{\topsep}{0pt}
+  \item[(i)] \eqref{eq:v3_epigraph} is \emph{exact at every integer vertex}
+  $y\in\{0,1\}$, where it collapses to the true selected-tile roofline and hence
+  coincides with \eqref{eq:v1};
+  \item[(ii)] as a continuous relaxation it enforces
+  $T_i \ge \sum_c \max(\Tmin_i(c)\,v_{i,c},\,(\Tmax_i(c){-}\mathrm{save}_{i,c})\,u_{i,c})$,
+  which \emph{dominates} the weaker aggregate bound
+  $T_i \ge \max(\sum_c \Tmin_i(c)\,v_{i,c},\,\sum_c (\Tmax_i(c){-}\mathrm{save}_{i,c})\,u_{i,c})$
+  of \eqref{eq:v1}.
+\end{enumerate}
+Therefore, at matched hardware, the CHEETAH-V1 certified lower bound is never
+below the CHEETAH-V1 lower bound,
+$\min_{\mathcal{P}_{V3}}\mathbf{c}^\top x \ge \min_{\mathcal{P}_{V2}}\mathbf{c}^\top x$,
+with strict improvement exactly when the V2 optimum blends a compute-bound tile
+against a bandwidth-bound tile to hide both bottlenecks. The certified bound thus
+\emph{cannot get worse and generally improves}, while both remain $\le$ the
+lifted-FAST optimum of Corollary~\ref{cor:optimum}.
+\end{corollary}
+\begin{proof}
+The box links are the McCormick envelope of the products $v\cdot y_{i,c}$ and
+$u\cdot y_{i,c}$ over the unit-$y$ box, which is the tightest convex relaxation
+and is exact at $y\in\{0,1\}$~\citep{mccormick1976computability}. At an integer
+vertex, $\sum_c y_{i,c}=1$ forces $y_{i,c^\star}=1$ for a single $c^\star$ and
+$y_{i,c}=0$ otherwise; the box links then pin $v_{i,c^\star}=v$, $u_{i,c^\star}=u$
+and $v_{i,c}=u_{i,c}=0$ for $c\ne c^\star$, so
+$\tau_{i,c^\star}\ge\max(\Tmin_i(c^\star)v,(\Tmax_i(c^\star){-}\mathrm{save}_{i,c^\star})u)$
+and $T_i\ge\sum_c\tau_{i,c}$ reduces to the true selected-tile roofline, which is
+\eqref{eq:v1} at that vertex, giving (i). For (ii), the epigraph rows
+$\tau_{i,c}\ge\Tmin_i(c)\,v_{i,c}$ and
+$\tau_{i,c}\ge(\Tmax_i(c){-}\mathrm{save}_{i,c})\,u_{i,c}$ give
+$\tau_{i,c}\ge\max(\cdot,\cdot)$, so
+$T_i\ge\sum_c\max(\cdot,\cdot)\ge\max(\sum_c\cdot,\sum_c\cdot)$ by superadditivity
+of the maximum ($\sum_c\max(a_c,b_c)\ge\max(\sum_c a_c,\sum_c b_c)$). Thus every
+$T$ feasible for \eqref{eq:v3_epigraph} satisfies the aggregate row of
+\eqref{eq:v1}, i.e.\ the V3-feasible set is contained in the V2-feasible set
+along the shared coordinates; minimizing the same objective over a subset yields
+a value at least as large, giving
+$\min_{\mathcal{P}_{V3}}\mathbf{c}^\top x \ge \min_{\mathcal{P}_{V2}}\mathbf{c}^\top x$.
+By (i) the tightening removes only fractional-$y$ points, so lifted FAST, being
+integral in $y$, stays feasible in $\mathcal{P}_{V3}$; hence both minima remain
+$\le$ the lifted-FAST optimum via Corollary~\ref{cor:optimum}.
+\end{proof}
+
+Theorem~\ref{thm:containment} is a modeling containment result, and does not predict numerical equivalence of the speedups CHEETAH and FAST report.
+Empirically, differences can arise from baseline normalization, TPU-v3 simulator overheads, control/padding costs, and batch/core conventions.
+
+\begin{remark}[Scope of the certificate: inner LP vs.\ outer search]
+\label{rem:scope}
+The guarantees above are \emph{inner-problem} certificates. For a fixed hardware
+candidate $H$, workload $G$, execution order, and finite candidate tiling sets,
+CHEETAH's joint program is a convex LP, so any converged optimum is global to
+within the reported solver tolerance and yields a certified lower bound on the
+achievable schedule cost for that $H$. The \emph{outer} hardware search (the
+LLM-Architect / Vizier loop that proposes chip candidates) is a heuristic: we do
+\emph{not} claim a certified global optimum over the unrestricted hardware space,
+only over the schedule for each proposed $H$.
+
+The residual LP-to-integer gap observed on weight-heavy models, where a
+per-block weight tensor exceeds the on-chip budget and cannot be held
+integrally, is \emph{certified relaxation looseness}: a property of the
+\emph{bound}, not of the deployed schedule. On the chain-structured subproblems
+where it appears, the executable schedule attains the exact integral optimum
+(verified by chain dynamic programming), so the gap measures the distance from
+the LP lower bound up to that integral optimum, not any suboptimality of what
+runs on hardware. In particular, the zero LP \emph{duality} gap at convergence
+must not be conflated with this LP-to-integer \emph{relaxation} gap: the former
+certifies the relaxation was solved to optimality, whereas the latter is the
+inherent looseness of the convex relaxation, precisely the quantity that
+Corollary~\ref{cor:v3_hull}'s tighter epigraph reduces.
+\end{remark}

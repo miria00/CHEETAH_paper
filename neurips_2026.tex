@@ -1,0 +1,380 @@
+% \documentclass{article}
+% \usepackage{multirow}
+% \usepackage{graphicx}
+% \usepackage{booktabs}
+% \usepackage{enumitem}
+% \usepackage{optidef}
+% \usepackage{booktabs}
+% \usepackage{caption}   % for \captionof
+% \usepackage{xcolor}
+% \usepackage{amsmath}
+% \DeclareMathOperator*{\minimize}{minimize}
+% % "preprint" option is used for arXiv or other preprint submissions
+ % \usepackage[preprint]{neurips_2026}
+% \usepackage[breakable]{tcolorbox}
+% \usepackage[utf8]{inputenc} % allow utf-8 input
+% \usepackage[T1]{fontenc}    % use 8-bit T1 fonts
+% \usepackage{hyperref}       % hyperlinks
+% \hypersetup{colorlinks=true, linkcolor=blue, citecolor=blue, urlcolor=blue}
+% \usepackage{url}            % simple URL typesetting
+% \usepackage{booktabs}       % professional-quality tables
+% \usepackage{amsfonts}       % blackboard math symbols
+% \usepackage{amsmath}
+% \usepackage{amssymb}
+% \usepackage{nicefrac}       % compact symbols for 1/2, etc.
+% \usepackage{microtype}      % microtypography
+% \usepackage{xcolor}         % colors
+% \usepackage{graphicx}
+% \usepackage{algorithm}
+% \usepackage{stmaryrd}
+% \usepackage{fontenc}
+% \usepackage{enumitem}
+% \usepackage{algorithmic}
+% \definecolor{grey}{gray}{0.5}
+% \usepackage{multirow}
+% \usepackage{array}
+% \usepackage{amsthm}
+% \usepackage[capitalise]{cleveref}  % must come after hyperref
+% \usepackage{wrapfig}
+% \newtheorem{proposition}{Proposition}
+% \definecolor{skyblue}{RGB}{65, 155, 225}
+
+% % Convenience macros
+% \newcommand{\ie}{\textit{i.e.}}
+% \newcommand{\eg}{\textit{e.g.}}
+% \newcommand{\acroletter}[1]{\textbf{\textsc{#1}}}
+% \newcommand{\etal}{\textit{et al.}}
+% \newcommand{\todo}[1]{\textcolor{red}{\textbf{[TODO: #1]}}}
+% \newcommand{\Tmax}{T^{\max}}
+% \newcommand{\Tmin}{T^{\min}}
+% \newcommand{\CGM}{C_{\text{GM}}}
+% \newcommand{\Vzero}{\textcolor{skyblue}{V0}}
+% \newcommand{\Vone}{\textcolor{skyblue}{V1}}
+% \DeclareMathOperator*{\argmin}{arg\,min}
+
+
+% \title{Accelerating the Inference Era with AI-Driven, Globally Optimized HW/SW Co-Design}
+
+% % \author{%
+% %   Miria, Fangzhao, Adrian, Mert, Azalia \\
+% %   Stanford University\\
+% % }
+
+% \begin{document}
+
+% \maketitle
+
+% % \begin{abstract}
+% % Deep learning inference demand is projected to grow 10,000x within five years, yet general-purpose hardware cannot scale to meet it. Custom silicon specialized to target models offers a path to the required gains, but designing it demands co-optimizing hardware datapaths, software schedules, and compiler transforms across a combinatorial space exceeding $\mathcal O(10^{2300})$. As hardware/software co-design becomes more essential, existing frameworks use sequential, decoupled pipelines that miss critical cross-stage trade-offs. For example,  a tiling decision that slightly reduces compute efficiency may enable dramatically better fusion, but no prior system can discover such interactions.
+% % We introduce \textsc{CHEETAH} (\acroletter{C}o-designed \acroletter{H}ardware \acroletter{E}xploration via \acroletter{E}fficient \acroletter{T}hroughput and \acroletter{H}ybrid-search), a globally optimized, AI-driven framework for inference accelerator co-design. To our knowledge, \textsc{CHEETAH} is the first system to jointly optimize scheduling, tiling, fusion, and rematerialization across the entire model in a single unified formulation. Key contributions include: (1) time-indexed tensor placement variables that model dynamic memory management across inference timesteps, (2) rematerialization variables which permits cheap recompute operations rather than paying
+% % DRAM reload costs, and (3) joint tiling-fusion optimization via McCormick linearization that simultaneously selects per-operation tile configurations and tensor pinning decisions. In addition, hardware search is guided by a context-aware LLM that augments black-box search with profile-aware configuration proposals. In less than 6 hours, \textsc{CHEETAH} is able to propose designs where the Pareto frontier reaches up to ${\sim}35\times$  raw speedup on large-model workloads, over the TPUv3 baseline, unlocking efficiency that decoupled sequential pipelines cannot reach.
+% % \end{abstract}
+
+% \begin{abstract}
+% Deep learning inference demand is projected to grow $10,000\times$ over the next five years, a trajectory that general-purpose accelerators cannot match. Custom accelerators offer a viable path forward, but designing them requires simultaneous co-optimization of hardware datapaths, software schedules, and compiler transforms across a combinatorial search space exceeding $10^{2300}$. While co-design is becoming increasingly essential, existing methodologies rely on decoupled, sequential pipelines that miss critical cross-stage trade-offs. We introduce \textsc{CHEETAH}: a globally optimized, AI-driven framework for inference accelerator co-design. To our knowledge, this is the first co-design framework to \textit{jointly} optimize scheduling, tiling, fusion, and rematerialization into a single unified formulation. Key contributions include: (1) time-indexed variables for dynamic memory management, (2) rematerialization variables to enable cheap recomputation over costly DRAM reloads, and (3) joint tiling-fusion optimization via McCormick linearization. This inner-loop precision is steered by an LLM-guided outer loop that performs causal interventions based on specific deployment profiles and Lagrangian sensitivity signals. In under 6 hours, \textsc{CHEETAH} discovers designs on the Pareto frontier reaching up to ${\sim}35\times$ raw speedup over a TPU-v3 baseline, unlocking efficiency inaccessible to decoupled sequential pipelines.\end{abstract}
+
+% % \begin{abstract}
+% % Designing high-performance deep learning inference accelerators requires co-optimizing hardware datapaths, software schedules, and compiler passes---a combinatorial problem with search spaces exceeding $\mathcal O(10^{2300})$\footnote{See Section 5.3 in \citep{zhang_fast} for details.}.
+% % The state-of-the-art FAST framework \citep{zhang_fast} addresses this via a three-stage sequential pipeline: a black-box optimizer proposes hardware configurations, a scheduling engine determines per-operation tiling, and an integer linear program solver decides tensor fusion.
+% % However, this sequential decomposition loses cross-stage trade-offs: a tiling choice that slightly reduces compute efficiency may shrink working sets enough to enable dramatically better fusion, but the decoupled pipeline cannot discover such interactions.
+% % We present FAST-CORGI, a reformulation that unifies tiling, fusion, and memory scheduling into a single linear program solved within each iteration of the outer hardware search loop.
+% % Our formulation introduces three key extensions over FAST: (1) time-indexed tensor placement variables that model dynamic memory management across inference timesteps, (2) rematerialization variables that allow the solver to recompute cheap operations rather than paying DRAM reload costs, and (3) joint tiling-fusion optimization via McCormick linearization that simultaneously selects per-operation tile configurations and tensor pinning decisions.
+% % We further integrate a large language model (LLM) guided search to propose and refine hardware configurations in the outer loop. \textbf{V1 with 2× more trials still finishes 6.6× faster than V0 and 4.3× faster than Static, because static is infeasible on the large models}
+
+
+% % \end{abstract}
+% \input{1-introduction}
+% \input{2-related-work}
+% \input{prelim}
+% \input{3-methods}
+% \input{5-experiments}
+% \input{6-conclusion}
+
+% % \begin{ack}
+% % % \todo{Add acknowledgments.}
+% % Omitted during peer review phase.
+% % \end{ack}
+
+% % \textcolor{skyblue}{
+% % comments: 
+% % ILP vs LP (FAST's SCIP-based ILP already has a 20-minute timeout and often returns a non-optimal incumbent....../ optimal value compare / solver scaling plot / complexity analysis) 
+% % \\ \\
+% % our method vs FAST (if FAST already optimal....aha moment insight)
+% % \\ \\
+% % The structural invariance point (same sparsity pattern across Vizier trials, only coefficients change) is a nice practical insight that enables warm-starting and preconditioner reuse
+% % \\ \\
+% % fast paper acknowledges ILP as a limitation for more complex and large scale problems, Section 5.5
+% % }
+
+% \newpage
+% \bibliographystyle{abbrvnat}
+% \bibliography{ref}
+
+% %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+% \newpage
+% \appendix
+
+% \input{related_work_appendix}
+% \newpage
+% \input{4-theory}
+% \newpage
+% \input{lp_app}
+% \newpage
+% \input{Detailed_Methodology_appendix}
+% \newpage
+% \input{solver_app}
+% \newpage
+% \input{profiles_app}
+% \newpage
+% \input{tiling_app}
+
+
+% %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+
+% % \newpage
+% % \input{checklist.tex}
+
+% \end{document}
+
+% page edit
+
+\documentclass{article}
+\usepackage{multirow}
+\usepackage{graphicx}
+\usepackage{booktabs}
+\usepackage{enumitem}
+\usepackage{siunitx}
+\usepackage{optidef}
+\usepackage{booktabs}
+\usepackage{caption}   % for \captionof
+\usepackage{xcolor}
+\usepackage{xurl}
+\usepackage{amsmath}
+\DeclareMathOperator*{\minimize}{minimize}
+% "preprint" option is used for arXiv or other preprint submissions
+ \usepackage[preprint]{neurips_2026}
+\usepackage[breakable]{tcolorbox}
+\usepackage[utf8]{inputenc} % allow utf-8 input
+\usepackage[T1]{fontenc}    % use 8-bit T1 fonts
+\usepackage{hyperref}       % hyperlinks
+\hypersetup{colorlinks=true, linkcolor=blue, citecolor=blue, urlcolor=blue}
+\usepackage{url}            % simple URL typesetting
+\usepackage{titletoc}       % appendix-only local table of contents (Hawkeye-style)
+\dottedcontents{section}[1.6em]{\bfseries}{1.6em}{0.7pc}
+\dottedcontents{subsection}[4.0em]{}{2.4em}{0.7pc}
+\dottedcontents{subsubsection}[6.8em]{}{3.2em}{0.7pc}
+\usepackage{booktabs}       % professional-quality tables
+\usepackage{amsfonts}       % blackboard math symbols
+\usepackage{amsmath}
+\usepackage{amssymb}
+\usepackage{nicefrac}       % compact symbols for 1/2, etc.
+\usepackage{microtype}      % microtypography
+\usepackage{xcolor}         % colors
+\usepackage{graphicx}
+\usepackage{algorithm}
+\usepackage{stmaryrd}
+\usepackage{fontenc}
+\usepackage{enumitem}
+\usepackage{algorithmic}
+\definecolor{grey}{gray}{0.5}
+\usepackage{multirow}
+\usepackage{array}
+\usepackage{amsthm}
+\usepackage[capitalise]{cleveref}  % must come after hyperref
+\usepackage{wrapfig}
+\usepackage{tikz}
+\usepackage{colortbl}
+\usetikzlibrary{arrows.meta,positioning,fit,backgrounds}
+\newtheorem{proposition}{Proposition}
+\definecolor{skyblue}{RGB}{65, 155, 225}
+
+\usepackage[T1]{fontenc}
+\usepackage[utf8]{inputenc}
+\usepackage{amsmath, amssymb}
+\usepackage{booktabs}
+\usepackage{tabularx}
+\usepackage{array}
+\usepackage{enumitem}
+\usepackage{microtype}
+\usepackage{pdflscape}
+\theoremstyle{plain}
+\newtheorem{theorem}{Theorem}
+\newtheorem{corollary}{Corollary}
+\newtheorem{definition}{Definition}
+\theoremstyle{remark}
+\newtheorem*{remark}{Remark}
+
+
+\newcommand{\mnote}[1]{}
+\renewcommand{\mnote}[1]{\textcolor{blue}{\textbf{[NOTE: #1]}}}
+
+% Convenience macros
+\newcommand{\ie}{\textit{i.e.}}
+\newcommand{\eg}{\textit{e.g.}}
+\newcommand{\acroletter}[1]{\textbf{\textsc{#1}}}
+\newcommand{\etal}{\textit{et al.}}
+\newcommand{\todo}[1]{\textcolor{red}{\textbf{[TODO: #1]}}}
+\newcommand{\Tmax}{T^{\max}}
+\newcommand{\Tmin}{T^{\min}}
+\newcommand{\CGM}{C_{\text{GM}}}
+\newcommand{\Vzero}{\textcolor{skyblue}{V0}}
+\newcommand{\Vone}{\textcolor{skyblue}{V1}}
+\DeclareMathOperator*{\argmin}{arg\,min}
+
+
+\title{Accelerating the Inference Era with AI-Driven, Globally Optimized HW/SW Co-Design}
+
+\author{%
+    Miria Feng \\
+    Electrical Engineering \\
+    Stanford University \\
+    \texttt{miria0@stanford.edu}
+    \And
+    Fangzhao Zhang \\
+    Electrical Engineering \\
+    Stanford University \\
+    \texttt{zfzhao@stanford.edu} 
+    \And
+    Adrian Lafuente \\
+    Computer Science \\
+    Stanford University \\
+    \texttt{agamarra@stanford.edu}
+    \And
+    Mert Pilanci \\
+    Electrical Engineering \\
+    Stanford University \\
+    \texttt{pilanci@stanford.edu}
+    \And
+    Azalia Mirhoseini \\
+    Computer Science \\
+    Stanford University \\
+    \texttt{azalia@stanford.edu}
+  % examples of more authors
+  % \And
+  % Coauthor \\
+  % Affiliation \\
+  % Address \\
+  % \texttt{email} \\
+  % \AND
+  % Coauthor \\
+  % Affiliation \\
+  % Address \\
+  % \texttt{email} \\
+  % \And
+  % Coauthor \\
+  % Affiliation \\
+  % Address \\
+  % \texttt{email} \\
+  % \And
+  % Coauthor \\
+  % Affiliation \\
+  % Address \\
+  % \texttt{email} \\
+}
+
+
+
+\begin{document}
+
+\maketitle
+
+% \begin{abstract}
+% Deep learning inference demand is projected to grow 10,000x within five years, yet general-purpose hardware cannot scale to meet it. Custom silicon specialized to target models offers a path to the required gains, but designing it demands co-optimizing hardware datapaths, software schedules, and compiler transforms across a combinatorial space exceeding $\mathcal O(10^{2300})$. As hardware/software co-design becomes more essential, existing frameworks use sequential, decoupled pipelines that miss critical cross-stage trade-offs. For example,  a tiling decision that slightly reduces compute efficiency may enable dramatically better fusion, but no prior system can discover such interactions.
+% We introduce \textsc{CHEETAH} (\acroletter{C}o-designed \acroletter{H}ardware \acroletter{E}xploration via \acroletter{E}fficient \acroletter{T}hroughput and \acroletter{H}ybrid-search), a globally optimized, AI-driven framework for inference accelerator co-design. To our knowledge, \textsc{CHEETAH} is the first system to jointly optimize scheduling, tiling, fusion, and rematerialization across the entire model in a single unified formulation. Key contributions include: (1) time-indexed tensor placement variables that model dynamic memory management across inference timesteps, (2) rematerialization variables which permits cheap recompute operations rather than paying
+% DRAM reload costs, and (3) joint tiling-fusion optimization via McCormick linearization that simultaneously selects per-operation tile configurations and tensor pinning decisions. In addition, hardware search is guided by a context-aware LLM that augments black-box search with profile-aware configuration proposals. In less than 6 hours, \textsc{CHEETAH} is able to propose designs where the Pareto frontier reaches up to ${\sim}35\times$  raw speedup on large-model workloads, over the TPUv3 baseline, unlocking efficiency that decoupled sequential pipelines cannot reach.
+% \end{abstract}
+
+\begin{abstract}
+Deep learning inference demand is projected to grow $10{,}000\times$ over the next five years, a trajectory that general-purpose accelerators cannot match. Custom accelerators offer a viable path forward, but designing them requires simultaneous co-optimization of hardware datapaths, software schedules, and compiler transforms across a combinatorial search space exceeding $\mathcal O(10^{2300})$. While co-design is becoming increasingly essential, existing methodologies rely on decoupled, sequential pipelines that miss critical cross-stage trade-offs. We introduce \textsc{CHEETAH}: a globally optimized, AI-driven framework for inference accelerator co-design. 
+% To our knowledge, this is the first LP-based co-design framework to \textit{jointly} optimize scheduling, tiling, fusion, and rematerialization into a single unified formulation.
+To our knowledge, this is the first co-design framework to combine \textit{joint} tiling-fusion, dynamic placement, and rematerialization in a single LP-based formulation.
+Key contributions include: (1) time-indexed variables for dynamic memory management, (2) rematerialization variables to enable cheap recomputation over costly DRAM reloads, and (3) joint tiling-fusion optimization via McCormick linearization. This inner-loop precision is steered by an LLM-guided outer loop that performs causal interventions based on specific deployment profiles and Lagrangian sensitivity signals. The same formulation extends to the memory-bound decode regime of LLM serving, co-sizing on-chip memory against a bounded, quantized KV cache to shrink the decode memory wall. In less than 6 hours, \textsc{CHEETAH} discovers designs on the Pareto frontier achieving an average of $\sim22.07\times$ raw speedup across $11$ workloads, reaching up to $\sim40.1\times$ speedup on a single workload over a TPU-v3 baseline, unlocking efficiency inaccessible to decoupled sequential pipelines.\end{abstract}
+
+% \begin{abstract}
+% Designing high-performance deep learning inference accelerators requires co-optimizing hardware datapaths, software schedules, and compiler passes---a combinatorial problem with search spaces exceeding $\mathcal O(10^{2300})$\footnote{See Section 5.3 in \citep{zhang_fast} for details.}.
+% The state-of-the-art FAST framework \citep{zhang_fast} addresses this via a three-stage sequential pipeline: a black-box optimizer proposes hardware configurations, a scheduling engine determines per-operation tiling, and an integer linear program solver decides tensor fusion.
+% However, this sequential decomposition loses cross-stage trade-offs: a tiling choice that slightly reduces compute efficiency may shrink working sets enough to enable dramatically better fusion, but the decoupled pipeline cannot discover such interactions.
+% We present FAST-CORGI, a reformulation that unifies tiling, fusion, and memory scheduling into a single linear program solved within each iteration of the outer hardware search loop.
+% Our formulation introduces three key extensions over FAST: (1) time-indexed tensor placement variables that model dynamic memory management across inference timesteps, (2) rematerialization variables that allow the solver to recompute cheap operations rather than paying DRAM reload costs, and (3) joint tiling-fusion optimization via McCormick linearization that simultaneously selects per-operation tile configurations and tensor pinning decisions.
+% We further integrate a large language model (LLM) guided search to propose and refine hardware configurations in the outer loop. \textbf{V1 with 2× more trials still finishes 6.6× faster than V0 and 4.3× faster than Static, because static is infeasible on the large models}
+
+
+% \end{abstract}
+\input{1-introduction}
+\input{2-related-work}
+\input{update/comparison_matrix}
+\input{prelim}
+\input{3-methods}
+\input{update/solver_vm}
+\input{5-experiments}
+\input{update/batch_sensitivity}
+\input{update/discussion}
+\input{update/rtl_validation}
+\input{update/tco}
+\input{6-conclusion}
+
+% \begin{ack}
+% % \todo{Add acknowledgments.}
+% Omitted during peer review phase.
+% \end{ack}
+
+% \textcolor{skyblue}{
+% comments: 
+% ILP vs LP (FAST's SCIP-based ILP already has a 20-minute timeout and often returns a non-optimal incumbent....../ optimal value compare / solver scaling plot / complexity analysis) 
+% \\ \\
+% our method vs FAST (if FAST already optimal....aha moment insight)
+% \\ \\
+% The structural invariance point (same sparsity pattern across Vizier trials, only coefficients change) is a nice practical insight that enables warm-starting and preconditioner reuse
+% \\ \\
+% fast paper acknowledges ILP as a limitation for more complex and large scale problems, Section 5.5
+% }
+
+\newpage
+\bibliographystyle{abbrvnat}
+\bibliography{ref}
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+\newpage
+\appendix
+
+% ---- Appendix table of contents on the first appendix page (Hawkeye-style) ----
+\startcontents[appendix]
+{\noindent\normalsize\textbf{Appendix}\par}
+\vspace{2pt}
+\begin{center}{\Large\textbf{Table of Contents}}\end{center}
+\vspace{4pt}
+\printcontents[appendix]{}{1}{\setcounter{tocdepth}{3}}
+\clearpage
+
+\input{related_work_appendix}
+\clearpage
+\input{4-theory}
+\clearpage
+\input{lp_app}
+\clearpage
+\input{details_audits}
+\clearpage
+\input{update/deficit_sensitivity}
+\clearpage
+\input{solver_app}
+\clearpage
+\input{profiles_app}
+\clearpage
+\input{tiling_app}
+\clearpage
+\input{blue}
+\clearpage
+\input{limitations}
+\input{shape_aggregation}
+\input{master_v3_lp}
+\input{socp_conditioning}
+\input{socp_provenance}
+\input{coeff_provenance}
+\input{cvxcluster_mapping}
+% \newpage
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+
+% \newpage
+% \input{checklist.tex}
+
+\end{document}

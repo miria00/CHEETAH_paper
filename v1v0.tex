@@ -1,0 +1,506 @@
+\documentclass{article}
+\usepackage[utf8]{inputenc}
+\usepackage{amsmath}
+\usepackage{amssymb}
+\usepackage{booktabs}
+\usepackage{geometry}
+\geometry{a4paper, margin=1in}
+\usepackage[margin=1in]{geometry}
+\usepackage{amsmath, amssymb, amsthm}
+\usepackage{booktabs}
+\usepackage{array}
+\usepackage{xcolor}
+\usepackage{listings}
+\usepackage{hyperref}
+\usepackage{enumitem}
+\usepackage{fancyhdr}
+\usepackage{titlesec}
+\usepackage{multirow}
+\usepackage{tabularx}
+\usepackage{tcolorbox}
+\tcbuselibrary{skins, breakable}
+
+% Colors
+\definecolor{codeblue}{RGB}{30, 100, 180}
+\definecolor{codegray}{RGB}{245, 245, 245}
+\definecolor{sectionblue}{RGB}{31, 56, 100}
+\definecolor{bugred}{RGB}{180, 30, 30}
+\definecolor{okgreen}{RGB}{0, 120, 60}
+\definecolor{warnyellow}{RGB}{200, 140, 0}
+\definecolor{tableheader}{RGB}{213, 232, 240}
+
+% Section formatting
+\titleformat{\section}{\large\bfseries\color{sectionblue}}{\thesection}{1em}{}
+\titleformat{\subsection}{\normalsize\bfseries\color{codeblue}}{\thesubsection}{1em}{}
+\titleformat{\subsubsection}{\normalsize\bfseries}{\thesubsubsection}{1em}{}
+
+% Code block style
+\lstset{
+  backgroundcolor=\color{codegray},
+  basicstyle=\ttfamily\small,
+  breaklines=true,
+  frame=single,
+  rulecolor=\color{gray!40},
+  framesep=5pt,
+  xleftmargin=10pt,
+  xrightmargin=10pt,
+  showstringspaces=false,
+  columns=fullflexible,
+  keepspaces=true
+}
+
+% Colored boxes
+\tcbset{
+  bugbox/.style={
+    colback=red!5, colframe=bugred, fonttitle=\bfseries,
+    breakable, left=6pt, right=6pt, top=4pt, bottom=4pt
+  },
+  infobox/.style={
+    colback=blue!5, colframe=codeblue, fonttitle=\bfseries,
+    breakable, left=6pt, right=6pt, top=4pt, bottom=4pt
+  },
+  greenbox/.style={
+    colback=green!5, colframe=okgreen, fonttitle=\bfseries,
+    breakable, left=6pt, right=6pt, top=4pt, bottom=4pt
+  },
+  warnbox/.style={
+    colback=yellow!5, colframe=warnyellow, fonttitle=\bfseries,
+    breakable, left=6pt, right=6pt, top=4pt, bottom=4pt
+  }
+}
+
+\title{One-shot Tiling and Fusion LP Formulation\\for Domain-Optimized Deep Learning Accelerators V1}
+\author{CORGI Solver Systems}
+\date{March 2026}
+
+\begin{document}
+
+\maketitle
+
+\section{Overview between V0 and V1}
+
+V0 solves fusion and rematerialization jointly, with tiling decisions provided externally by Timeloop
+as fixed constants $T_i^{\min}$, $T_i^{\max}$, $t_i^k$. Observation: the best tile size for an operation depends on what tensors the fusion plan
+can pin, and the best fusion plan depends on the working-set sizes that tiling produces.
+Sequential optimization misses trade-off tension of the form:
+
+
+Accept a tiling configuration $c'$ that reduces compute efficiency by 5\% relative to
+Timeloop's greedy choice, but shrinks the activation working set enough to fit an additional
+weight tensor in the Global Buffer, removing the DRAM bottleneck entirely and yielding
+a net 20\%+ cycle reduction.
+
+
+This document if for V1: formulates tiling and fusion as a single LP solved by the CORGIsolver, replacing the sequential Timeloop - FAST Fusion ILP pipeline
+for the inner optimization. Vizier's outer loop over hardware configurations is unchanged.
+
+\section{Pipeline Mapping}
+
+The outer pipeline structure is preserved. The joint LP replaces steps 2 and 3 of the sequential pipeline.
+
+\begin{table}[h!]
+\centering
+\begin{tabular}{llll}
+\toprule
+\textbf{Component} & \textbf{Original FAST} & \textbf{MultiPeriod V0} & \textbf{V1 (This doc)} \\
+\midrule
+Vizier            & Hardware config & Hardware config & Hardware config \\
+Timeloop          & Single run per op & Single run per op & Run per op \textit{per config} \\
+Tiling vars       & None (Timeloop decides) & None & $y_{i,c}$ (new) \\
+Placement vars    & $p_i^k$ (static) & $p_{e,t}^k$ (time-indexed) & $p_{e,t},\, p_{i,t}^W$ (unchanged) \\
+Remat vars        & None & $r_{i,t}$ & $r_{i,t}$ (unchanged) \\
+Linearization vars & None & None & $w_{i,c,k}$ (new) \\
+Joint opt.        & No & No & \textbf{Yes} \\
+Skip connections  & Restricted & Restricted & \textbf{Relaxed} \\
+\bottomrule
+\end{tabular}
+\caption{Structural comparison across formulation generations.}
+\end{table}
+
+\subsection{What Timeloop Does in V1}
+
+Timeloop is run \textit{offline} for each (op $i$, config $c$) pair in the Pareto-pruned
+config set $\mathcal{C}_i$. For each pair it returns the triple of constants used in the LP:
+
+\[
+  \bigl(T_i^{\min}(c),\;\; T_i^{\max}(c),\;\; t_i^k(c)\bigr)
+  \qquad k \in \{I, O, W\}
+\]
+
+where $T_i^{\max}(c)$ is the cycle count when all tensors stream from DRAM under config $c$,
+$T_i^{\min}(c)$ is the cycle count when all tensors are on-chip under config $c$, and
+$t_i^k(c)$ is the cycle saving from pinning tensor of type $k$ in the Global Buffer under
+config $c$. These are precomputed constants; the LP solver sees no Timeloop calls at solve
+time.
+
+\section{Pareto Pruning Pre-Pass}
+
+The raw tiling search space for a 7-dimensional convolution loop with 3 memory levels is
+$O(10^{7})$ configurations per operation. Direct enumeration is infeasible for precomputation?
+We reduce to a tractable Pareto-optimal subset $\mathcal{C}_i$ for each op $i$ before
+the LP is constructed.
+
+\subsection{Pruning Criteria}
+
+A configuration $c$ is retained in $\mathcal{C}_i$ \textbf{if and only if:}
+
+\begin{enumerate}[noitemsep]
+  \item \textbf{L1 mem feasibility:} the tiled working set fits in the L1 scratchpad capacity
+        $C_{L1}$. Infeasible configs are dropped before Pareto evaluation.
+  \item \textbf{Pareto-optimality} on the two-objective frontier of
+        $(T_i^{\max}(c),\; \text{working-set size in Global Buffer under }c)$.
+        A config is dominated if another config achieves both lower $T_i^{\max}$ and
+        a smaller working set, and is therefore eliminated.
+\end{enumerate}
+
+
+In practice (ref Zhongwei), Pareto pruning reduces $O(10^7)$ raw configs to $|\mathcal{C}_i| \approx 10^2$
+to $10^3$ per op. This document sizes the formulation at $|\mathcal{C}_i| = 1{,}000$
+as an upper bound; the LP scales linearly with $|\mathcal{C}_i|$.
+
+\subsection{Precomputation Cost? Need to check}
+
+Timeloop must run once per (op, config) pair. For EfficientNet-B7 with $L = 400$ ops and
+$|\mathcal{C}_i| = 1{,}000$:
+
+\[
+  400 \times 1{,}000 = 400{,}000 \text{ Timeloop evaluations}
+\]
+
+At an average of 5 seconds per evaluation, this is approximately 23 hours wall-clock time
+on a single machine, or under 30 minutes with 512-way parallelism. Results are cached and
+reused across all Vizier trials that share the same hardware configuration class.
+
+\section{Linearization of the Bilinear Interaction}
+
+The joint objective requires the product of two continuous variables: the tiling selection
+$y_{i,c} \in [0,1]$ and the tensor pinning indicator $p \in [0,1]$ at the time op $i$
+executes ($t = o(i)$). This bilinear term is linearized exactly via the
+McCormick substitution.
+
+\subsection{Bilinear Term Structure}
+
+The execution time saving for op $i$ from pinning tensor $k$ under config $c$ is:
+
+\[
+  t_i^k(c) \cdot y_{i,c} \cdot p_{\text{assoc}(i,k),\, o(i)}
+\]
+
+where $\text{assoc}(i,k)$ maps op $i$ and tensor type $k \in \{I, O, W\}$ to the
+corresponding placement variable. We introduce the auxiliary variable:
+
+\[
+  w_{i,c,k} \;:=\; y_{i,c} \cdot p_{\text{assoc}(i,k),\, o(i)}
+\]
+
+\subsection{McCormick Linearization}
+
+Since both $y_{i,c}$ and $p \in [0,1]$, the product is linearized exactly by four
+linear constraints:
+
+\[
+\begin{aligned}
+  w_{i,c,k} &\leq y_{i,c} \\
+  w_{i,c,k} &\leq p_{\text{assoc}(i,k),\, o(i)} \\
+  w_{i,c,k} &\geq y_{i,c} + p_{\text{assoc}(i,k),\, o(i)} - 1 \\
+  w_{i,c,k} &\geq 0
+\end{aligned}
+\qquad \forall\, i \in \mathcal{N},\; c \in \mathcal{C}_i,\; k \in \{I, O, W\}
+\]
+
+This linearization is \textbf{exact} at integer solutions: when $y_{i,c} \in \{0,1\}$ and
+$p \in \{0,1\}$, the four constraints force $w_{i,c,k} = y_{i,c} \cdot p$ exactly.
+No big-$M$ constants are required, and the LP relaxation bound is tight.
+
+\section{The Joint V1 LP Formulation}
+
+\subsection{Decision Variables}
+
+\[
+  y_{i,c} \in [0,1], \quad
+  p_{e,t} \in [0,1], \quad
+  p_{i,t}^W \in [0,1], \quad
+  r_{i,t} \in [0,1], \quad
+  w_{i,c,k} \in [0,1], \quad
+  T_i \geq 0
+\]
+
+In an LP relaxation all variables are continuous on $[0,1]$; integrality is enforced
+post-solve via rounding or by re-solving as MIP if the relaxation gap is unacceptable.
+
+\subsection{Full Formulation}
+
+\[
+\begin{aligned}
+\text{minimize} \quad
+  & \sum_{i \in \mathcal{N}} T_i
+  \;+\; \sum_{i \in \mathcal{N}} \sum_{t \in \mathcal{T}} c_i^{\text{remat}}\, r_{i,t} \\[6pt]
+%
+\text{subject to} \\[4pt]
+%
+% (1) One tiling config per op
+  & \sum_{c \in \mathcal{C}_i} y_{i,c} = 1
+  & \forall\, i \in \mathcal{N} \\[4pt]
+%
+% (2) Execution time -- upper bound (joint tiling + fusion)
+  & T_i \;\geq\; \sum_{c \in \mathcal{C}_i} T_i^{\max}(c)\, y_{i,c}
+    \;-\; \sum_{c \in \mathcal{C}_i} \sum_{k \in \{I,O,W\}} t_i^k(c)\, w_{i,c,k}
+  & \forall\, i \in \mathcal{N} \\[4pt]
+%
+% (3) Execution time -- lower bound (compute-bound floor)
+  & T_i \;\geq\; \sum_{c \in \mathcal{C}_i} T_i^{\min}(c)\, y_{i,c}
+  & \forall\, i \in \mathcal{N} \\[4pt]
+%
+% (4) McCormick linearization
+  & w_{i,c,k} \leq y_{i,c}
+  & \forall\, i,\, c \in \mathcal{C}_i,\, k \\[2pt]
+  & w_{i,c,k} \leq p_{\text{assoc}(i,k),\, o(i)}
+  & \forall\, i,\, c \in \mathcal{C}_i,\, k \\[2pt]
+  & w_{i,c,k} \geq y_{i,c} + p_{\text{assoc}(i,k),\, o(i)} - 1
+  & \forall\, i,\, c \in \mathcal{C}_i,\, k \\[4pt]
+%
+% (5) Global memory capacity -- per timestep
+  & \sum_{e \in \mathcal{E}} d_e\, p_{e,t}
+    \;+\; \sum_{i \in \mathcal{N}} d_i^W\, p_{i,t}^W
+    \;\leq\; C_{\text{GM}}
+  & \forall\, t \in \mathcal{T} \\[4pt]
+%
+% (6) Activation persistence (eviction / remat)
+  & p_{e,t} \leq p_{e,t-1} + r_{\text{src}(e),\, t}
+  & \forall\, e \in \mathcal{E},\; t > o(\text{src}(e)) \\[4pt]
+%
+% (7) Weight monotone non-increase (no reload without remat)
+  & p_{i,t}^W \leq p_{i,t-1}^W
+  & \forall\, i \in \mathcal{N},\; t > o(i) \\[4pt]
+%
+% (8) Remat only after first execution
+  & r_{i,t} = 0
+  & \forall\, i \in \mathcal{N},\; t \leq o(i) \\[4pt]
+%
+% (9) Remat requires input activations to be present
+  & r_{i,t} \leq p_{e,t}
+  & \forall\, e \in \text{in}(i),\; t > o(i) \\[4pt]
+%
+% (10) Remat requires weights to be present
+  & r_{i,t} \leq p_{i,t}^W
+  & \forall\, i \in \mathcal{N},\; t > o(i) \\[4pt]
+%
+% (11) Boundary: tensors zero before produced
+  & p_{e,t} = 0
+  & \forall\, e \in \mathcal{E},\; t < o(\text{src}(e)) \\[2pt]
+  & p_{i,t}^W = 0
+  & \forall\, i \in \mathcal{N},\; t < o(i) \\[4pt]
+%
+% (12) Non-negativity
+  & T_i,\; p_{e,t},\; p_{i,t}^W,\; r_{i,t},\; w_{i,c,k} \geq 0
+\end{aligned}
+\]
+
+\subsection{Notes on the Constraints}
+
+\begin{itemize}
+    \item Constraints (2) and (3) jointly express that the LP must commit to a tiling config
+$c$ (via $y_{i,c}$) which sets both the baseline compute cost $T_i^{\max}(c)$ and
+the per-tensor DRAM savings $t_i^k(c)$. A config with smaller tiles may have higher
+$T_i^{\max}(c)$ (lower compute utilization) but also smaller tensor working sets,
+enabling more aggressive pinning. The LP balances these simultaneously rather than
+sequentially.
+\item Constraint (6) is indexed over edges $e \in \mathcal{E}$ rather than ops.
+A node with fan-out degree $d$ generates $d$ edges, each with its own $p_{e,t}$ variable
+and persistence constraint. This correctly models the case where one consumer of a
+skip connection benefit from on-chip residual while another does not, without the
+big-$M$ consecutive-execution restriction of the original FAST fusion ILP.
+
+\end{itemize}
+
+
+\section{Variable Definitions and Dimension Estimates for V1}
+
+EfficientNet-B7 estimates: $L = 400$ ops, $T = 400$ timesteps,
+$|\mathcal{C}_i| = 1{,}000$ Pareto-pruned configs, $|\mathcal{E}| \approx 400$ edges.
+
+\begin{table}[h!]
+\centering
+\begin{tabular}{lrrl}
+\toprule
+\textbf{Variable} & \textbf{Dimension} & \textbf{Count} & \textbf{Notes} \\
+\midrule
+$T_i$             & $L \times 1$              & 400           & Continuous, unchanged \\
+$y_{i,c}$         & $L \times |\mathcal{C}|$  & 400,000       & New: tiling config selection \\
+$p_{e,t}$         & $|\mathcal{E}| \times T$  & 160,000       & Edge-indexed, time-indexed \\
+$p_{i,t}^W$       & $L \times T$              & 160,000       & Weight placement \\
+$r_{i,t}$         & $L \times T$              & 160,000       & Rematerialization \\
+$w_{i,c,k}$       & $L \times |\mathcal{C}| \times 3$ & 1,200,000 & New: linearization variables \\
+\midrule
+\textbf{Total}    &                           & \textbf{2,080,400} & \\
+\midrule
+Constraint matrix $A$ & $\approx 5{,}000{,}000 \times 2{,}080{,}400$ & & \\
+Estimated NNZ         & $\approx$ 15M -- 25M   & & $\ll$ CORGI 6.5B limit \\
+\bottomrule
+\end{tabular}
+\caption{Variable count at $L = 400$, $T = 400$, $|\mathcal{C}_i| = 1{,}000$.}
+\end{table}
+
+\subsection{NNZ Breakdown by Constraint Block}
+
+\begin{table}[h!]
+\centering
+\begin{tabular}{lrl}
+\toprule
+\textbf{Constraint Block} & \textbf{Estimated NNZ} & \textbf{Source} \\
+\midrule
+One-config-per-op (1)           & 400,000      & $L \times |\mathcal{C}|$ entries \\
+Exec.\ time upper bound (2)     & 4,800,000    & $|\mathcal{C}| \times 4$ terms per op \\
+Exec.\ time lower bound (3)     & 400,000      & $|\mathcal{C}|$ terms per op \\
+McCormick linearization (4)     & 7,200,000    & 3 constraints $\times$ 2 vars $\times$ $L|\mathcal{C}|3$ \\
+Global memory capacity (5)      & 320,000      & $T \times (|\mathcal{E}| + L)$ \\
+Activation persistence (6)      & 800,000      & $|\mathcal{E}| \times T \times 2$ \\
+Weight monotone (7)             & 320,000      & $L \times T \times 2$ \\
+Remat feasibility (8--10)       & 640,000      & Several $L \times T$ blocks \\
+Boundary conditions (11)        & 800,000      & $|\mathcal{E}| \times T + L \times T$ \\
+\midrule
+\textbf{Total (approx.)}        & \textbf{$\sim$15.7M} & \\
+\bottomrule
+\end{tabular}
+\caption{NNZ estimate by constraint block. Well within CORGI's capacity.}
+\end{table}
+
+\section{Parameter Constants (Inputs Stored from Precomput)}
+
+\begin{table}[h!]
+\centering
+\begin{tabular}{@{}llp{7.5cm}@{}}
+\toprule
+\textbf{Constant} & \textbf{Source} & \textbf{Description} \\
+\midrule
+$T_i^{\max}(c)$   & Timeloop        & Cycle count for op $i$ under config $c$, all tensors in DRAM. \\
+$T_i^{\min}(c)$   & Timeloop        & Cycle count for op $i$ under config $c$, all tensors on-chip. \\
+$t_i^k(c)$        & Timeloop        & Cycle saving from pinning tensor $k$ in Global Buffer under config $c$. \\
+$d_e$             & HLO graph       & Size in bytes of activation tensor on edge $e$. \\
+$d_i^W$           & HLO graph       & Size in bytes of weight tensor for op $i$. \\
+$c_i^{\text{remat}}$ & Timeloop / analytical & Cycle cost of recomputing op $i$. \\
+$C_{\text{GM}}$   & Vizier          & Global Memory capacity in bytes (e.g., 128\,MiB). \\
+$o(i)$            & HLO graph       & Pre-determined execution order of fusion regions. \\
+$\mathcal{C}_i$   & Pareto pruning  & Set of Pareto-optimal tiling configs for op $i$. \\
+\bottomrule
+\end{tabular}
+\caption{Input constants. All are precomputed before the LP.}
+\end{table}
+
+\section{Comparison to V0 and FAST static}
+
+\begin{table}[h!]
+\centering
+\begin{tabular}{lccc}
+\toprule
+\textbf{Property} & \textbf{FAST Fusion ILP} & \textbf{Multi-Period V0} & \textbf{This LP (V1)} \\
+\midrule
+Joint tiling + fusion            & \texttimes & \texttimes & \checkmark \\
+Time-indexed placement           & \texttimes & \checkmark & \checkmark \\
+Rematerialization                & \texttimes & \checkmark & \checkmark \\
+Relaxed skip-connection liveness & \texttimes & Partial    & \checkmark \\
+Config-dependent DRAM savings    & \texttimes & \texttimes & \checkmark \\
+Bilinear terms                   & None       & None       & Linearized exactly \\
+Solver                           & SCIP (CPU) & CORGI      & CORGI \\
+Solve time (reported/estimated)  & 20 min-Hours (ref Dan) & Fast     & Est.\ fast \\
+\bottomrule
+\end{tabular}
+\caption{Static, V0, V1 comparison}
+\end{table}
+
+
+\newpage
+
+
+\[
+\begin{aligned}
+\text{minimize} \quad
+  & \sum_{i \in \mathcal{N}} T_i
+  \;+\; \sum_{i \in \mathcal{N}} \sum_{t \in \mathcal{T}} c_i^{\text{remat}}\, r_{i,t} \\[6pt]
+%
+\text{subject to} \\[4pt]
+%
+% (1) One tiling config per op
+  & \sum_{c \in \mathcal{C}_i} y_{i,c} = 1
+  & \forall\, i \in \mathcal{N} \\[4pt]
+%
+% (2) Execution time -- upper bound (joint tiling + fusion)
+  & T_i \;\geq\; \sum_{c \in \mathcal{C}_i} T_i^{\max}(c)\, y_{i,c}
+    \;-\; \sum_{c \in \mathcal{C}_i} \sum_{k \in \{I,O,W\}} t_i^k(c)\, w_{i,c,k}
+  & \forall\, i \in \mathcal{N} \\[4pt]
+%
+% (3) Execution time -- lower bound (compute-bound floor)
+  & T_i \;\geq\; \sum_{c \in \mathcal{C}_i} T_i^{\min}(c)\, y_{i,c}
+  & \forall\, i \in \mathcal{N} \\[4pt]
+%
+% (4) McCormick linearization
+  & w_{i,c,k} \leq y_{i,c}
+  & \forall\, i,\, c \in \mathcal{C}_i,\, k \\[2pt]
+  & w_{i,c,k} \leq p_{\text{assoc}(i,k),\, o(i)}
+  & \forall\, i,\, c \in \mathcal{C}_i,\, k \\[2pt]
+  & w_{i,c,k} \geq y_{i,c} + p_{\text{assoc}(i,k),\, o(i)} - 1
+  & \forall\, i,\, c \in \mathcal{C}_i,\, k \\[4pt]
+%
+% (5) Global memory capacity -- per timestep
+  & \sum_{e \in \mathcal{E}} d_e\, p_{e,t}
+    \;+\; \sum_{i \in \mathcal{N}} d_i^W\, p_{i,t}^W
+    \;\leq\; C_{\text{GM}}
+  & \forall\, t \in \mathcal{T} \\[4pt]
+%
+% (6) Activation persistence (eviction / remat)
+  & p_{e,t} \leq p_{e,t-1} + r_{\text{src}(e),\, t}
+  & \forall\, e \in \mathcal{E},\; t > o(\text{src}(e)) \\[4pt]
+%
+% (7) Weight monotone non-increase (no reload without remat)
+  & p_{i,t}^W \leq p_{i,t-1}^W
+  & \forall\, i \in \mathcal{N},\; t > o(i) \\[4pt]
+%
+% (8) Remat only after first execution
+  & r_{i,t} = 0
+  & \forall\, i \in \mathcal{N},\; t \leq o(i) \\[4pt]
+%
+% (9) Remat requires input activations to be present
+  & r_{i,t} \leq p_{e,t}
+  & \forall\, e \in \text{in}(i),\; t > o(i) \\[4pt]
+%
+% (10) Remat requires weights to be present
+  & r_{i,t} \leq p_{i,t}^W
+  & \forall\, i \in \mathcal{N},\; t > o(i) \\[4pt]
+%
+% (11) Boundary: tensors zero before produced
+  & p_{e,t} = 0
+  & \forall\, e \in \mathcal{E},\; t < o(\text{src}(e)) \\[2pt]
+  & p_{i,t}^W = 0
+  & \forall\, i \in \mathcal{N},\; t < o(i) \\[4pt]
+%
+% (12) Non-negativity
+  & T_i,\; p_{e,t},\; p_{i,t}^W,\; r_{i,t},\; w_{i,c,k} \geq 0
+\end{aligned}
+\]
+
+\newpage
+\begin{equation*}
+\begin{aligned}
+\text{minimize} & \sum_{i\in \mathcal N} T_i+\sum_{i\in\mathcal N}\sum_{t\in\mathcal T} c_{i}^{\text{remat}} r_{i,t}\\
+\text{subject to } & T_i\geq T_i^{\text{max}}-\sum_{e\in\text{in}(i)}t_e^I\cdot p_{e,o(i)}-t_i^O\cdot p_{e',o(i)}-t_i^W\cdot p_{i,o(i)}^W\\
+& T_i\geq T_i^{\text{min}}\\
+& \sum_e d_e p_{e,t}+\sum_i d_i^W\cdot p_{i,t}^W \leq C_{\text{GM}} \quad \forall t\\
+& p_{e,t}\leq p_{e,t-1}+r_{\text{src}(e),t}\quad \forall e,t>o(\text{src}(e))\\
+& r_{i,t}=0\quad \forall t\leq o(i)\\
+& r_{i,t} \leq p_{e,t} \quad \forall e\in\text{in}(i)\quad \forall t>o(i)\\
+&r_{i,t}\leq p_{i,t}^W\quad \forall i,\forall t>o(i)\\
+& p_{i,t}^W\leq p_{i,t-1}^W\\
+% & p_{i,t}^O\leq p_{j,t}^I\\
+% & 0\leq p_{i,t}^k,r_{i,t}\leq 1 \\
+& 0\leq  p_{e,t}, p^W_{i,t}, r_{i,t}\leq 1\\
+& T_i\geq 0 \\
+& p_{e,t} = 0 \quad \forall t<o(\text{src}(e)) \\
+& p_{i,t}^W=0 \quad \forall t<o(i)
+\end{aligned}
+\end{equation*}
+
+
+
+\end{document}
+
+\end{document}

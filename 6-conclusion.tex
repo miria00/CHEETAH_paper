@@ -1,0 +1,41 @@
+% \section{Conclusion}
+% \label{sec:conclusion}
+
+% We present CHEETAH: a co-design framework that combines two powerful LP reformulations with an LLM-Architect guided outer loop to quickly and effectively design custom accelerators. CHEETAH is able to model more global design trade-offs that traditional sequential pipelines cannot unlock, while the outer loop further improves efficiency by steering a hardware configuration tool to suggest positive search neighbors. 
+% Our V0 approach extends standard static fusion ILP with time-indexed tensor placement and rematerialization, enabling dynamic memory management within a single inference pass. Our V1 approach further unifies tiling and fusion optimization via McCormick linearization, enabling the solver to discover cross-stage trade-offs that the sequential pipeline systematically misses.
+% The joint LP formulation scales to production-size models (2.5M variables, 6.1M nonzeros for DeepSeek-V3) and preserves the structural invariance needed for efficient solver preconditioning across hardware search trials. The largest gains are seen on architectures with diverse layer types where joint tiling-fusion optimization is most impactful.
+
+% % \todo{Add result summary: ``Our experiments demonstrate $X\times$ Perf/TDP improvement over FAST on [workloads], with the largest gains on architectures with diverse layer types where joint tiling-fusion optimization is most impactful.''}
+
+% % \paragraph{Limitations and future work.}
+% % % \todo{rooflines and MFU validates, need to run this on a real simulator and finetune}
+% % Our current formulation treats the neural network architecture as fixed.
+% % A natural extension would co-optimize network architecture, hardware datapath, and compiler decisions in a single framework, building on prior work in hardware-aware NAS.
+% % The LP relaxation may produce fractional solutions that require rounding; investigating tighter formulations or branch-and-bound within the LP would improve solution quality.
+% % The LLM-guided outer loop is preliminary; a systematic study of prompt engineering, LLM-Vizier integration strategies, and the interaction between LLM reasoning and LP dual information would strengthen this component.
+% % Finally, extending the formulation to optimize for training workloads (which require backward-pass memory management and gradient accumulation) is an important direction.
+
+% % \paragraph{Broader impact.}
+% % More efficient accelerator design tools can reduce the energy consumption and carbon footprint of datacenter ML inference, which accounts for a growing share of global compute.
+% % By lowering the engineering effort and deployment scale required for specialized accelerators to be economically viable, our work may also broaden access to high-performance ML inference beyond the largest technology companies.
+
+% page edit
+
+\section{Conclusion}
+\label{sec:conclusion}
+
+% We present CHEETAH, a HW/SW co-design framework that combines two powerful LP reformulations with an LLM Architect guided outer loop to quickly and effectively design custom accelerators. 
+We present CHEETAH, a HW/SW co-design framework that combines a strict LP inner loop for physically constrained rules that must not be violated, with an LLM Architect guided outer loop that uses LP duals and trial diagnostics to effectively design high-performance accelerators.
+To our knowledge, CHEETAH is the first LP-based inference accelerator co-design framework to jointly optimize tiling, fusion, dynamic placement, scheduling, and rematerialization in one formulation. 
+Our framework is composed of two key ideas: LPs excel in solving mathematically modeled problems to proven optimality, and LLMs excel at aggregating vast amounts of information. In this work, we combine these ideas, and delegate the roles in co-design between these two pieces. The division of labor is strict: the solver owns feasibility and the optimality certificate, while the LLM aggregates diagnostics (converged duals, binding constraints, audit verdicts) into search-space interventions. The LLM proposes; the LP certifies. No LLM suggestion can violate a physical constraint, because suggestions only reshape the neighborhood handed to the certified inner problem.
+CHEETAH is able to model global design trade-offs that traditional sequential pipelines cannot unlock, while the outer loop further improves efficiency by steering a hardware configuration tool to suggest promising search neighborhoods. 
+Our CHEETAH-V0 and CHEETAH-V1 LP reformulations progressively unify placement, rematerialization, and tiling--fusion into a single pass, scaling to 2.5M variables and 6.1M nonzeros on DeepSeek-V3 while preserving the structural invariance needed for efficient solver preconditioning across hardware search trials. The largest gains are seen on architectures with diverse layer types where joint tiling-fusion optimization is most impactful.
+
+This manuscript presents a formal and empirical demonstration that sequential tiling-then-fusion loses solutions, together with a joint optimization method that recovers those solutions in precisely characterized operating regimes.
+Sequential accelerator pipelines make locally optimal mapping decisions before they know the global memory schedule; CHEETAH exposes tile choice, tensor residency, and rematerialization to one optimization problem.
+We prove that every in-scope sequential map-then-fuse pipeline, lifted FAST included, is contained in CHEETAH's feasible set (Theorem~\ref{thm:containment}), isolate a fixed-hardware free-$y$ gain on Llama-3 70B (2.11$\times$ under every sequential ordering vs.\ 2.51$\times$ for the joint LP), and characterize a second separation regime in capacity-constrained DeepSeek-V3, where tile-dependent footprints admit schedules unavailable to both stock V1 and an oracle two-pass sequential baseline. \todo{DS-V3 capacity-constrained separation not yet measured at a harsher CGM point (2--4\,MiB, activations binding); max measured so far is 0.077\% at CGM$=$4\,MiB. Run before release or soften this clause.}
+
+In sum, the paper contributes a new mathematical abstraction for global HW/SW co-design; an exact cross-stage tradeoff that FAST cannot express; a rounded, simulator-replayed validation proving the gains are not just an LP artifact; a decomposition of how the $40\times$ arises; and sensitivity sweeps showing it is not just more MACs.
+All utilization quantities we report are roofline-model diagnostics, not measured silicon utilization; real implementations would still incur NoC, SRAM, pipeline, and control overheads.
+
+Future work can build from this framework in two meaningful ways: as an end-to-end co-design system for efficient accelerators, and as an automated optimization engine for existing hardware. By fixing the architecture, the inner loop derives optimal tiling and scheduling strategies that can act as custom speedups for targeted inference tasks.

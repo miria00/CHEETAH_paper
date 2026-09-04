@@ -1,0 +1,153 @@
+% =====================================================================
+% Self-contained section fragment: the McCormick blow-up and the
+% VM-One-Armed-Rescue solver.  Ready to \input into neurips_2026.tex.
+% Relies on preamble macros \Tmax \Tmin \CGM \Vone \ie \eg and on
+% cleveref/natbib; cites keys already present in ref.bib.  Any genuinely
+% new keys would live in update/newrefs_solver.bib.
+% =====================================================================
+\section{The McCormick Blow-Up and the VM-One-Armed-Rescue Solver}
+\label{sec:solver_vm}
+
+The expressive power of the joint program is not free. Turning the tiling
+choice into a decision variable (\cref{sec:v1}) makes the DRAM-savings
+accounting \emph{bilinear}; linearizing it exactly through McCormick
+envelopes~\citep{mccormick1976computability} then multiplies the size of the
+constraint matrix and drives its conditioning across roughly ten orders of
+magnitude. We describe this blow-up (\cref{sec:mccormick_blowup}) and the
+custom first-order GPU solver that renders the resulting linear program
+tractable at LLM scale (\cref{sec:vm_solver}). The two are inseparable: we
+adopt the exact linearization \emph{only because} we have a solver engineered
+to consume its output.
+
+\subsection{The McCormick Blow-Up}
+\label{sec:mccormick_blowup}
+
+\paragraph{A bilinear coupling.}
+In the sequential pipeline the per-configuration timing $\Tmax_i(c)$,
+$\Tmin_i(c)$ and per-tensor DRAM cost $t_i^k(c)$ are fixed constants. \Vone{}
+instead selects the tiling inside the LP through one-hot variables
+$y_{i,c}\in[0,1]$ with $\sum_{c\in\mathcal{C}_i} y_{i,c}=1$
+(\cref{sec:v1}). The savings realized when tensor $k$ of operation $i$ is
+pinned on chip are only credited if that tensor is \emph{both} selected under
+configuration $c$ \emph{and} resident, so the DRAM-savings term becomes a
+product of two decision variables,
+\begin{equation}
+\label{eq:bilinear_coupling}
+t_i^k(c)\; \underbrace{y_{i,c}}_{\text{tiling selection}}\cdot
+\underbrace{p_{\text{assoc}(i,k),\,o(i)}}_{\text{residency}},
+\end{equation}
+where $p_{e,t}\in[0,1]$ is the edge-residency variable and $o(i)$ the
+execution order of $i$. The bilinear factor $y_{i,c}\,p$ is nonconvex and
+cannot be placed in a linear program directly.
+
+\paragraph{The McCormick box.}
+For each such product we introduce an auxiliary variable
+$w_{i,c,k} := y_{i,c}\, p_{\text{assoc}(i,k),\,o(i)}$ and bound it inside a box
+cut out by four linear inequalities~\citep{mccormick1976computability},
+\begin{equation}
+\label{eq:mcc_box}
+w_{i,c,k} \le y_{i,c},\qquad
+w_{i,c,k} \le p_{\text{assoc}(i,k),\,o(i)},\qquad
+w_{i,c,k} \ge y_{i,c} + p_{\text{assoc}(i,k),\,o(i)} - 1,\qquad
+w_{i,c,k} \ge 0 .
+\end{equation}
+Geometrically, the four planes \emph{bracket} the bilinear surface $w=y\,p$
+over the unit box $[0,1]^2$: $w\le y$ and $w\le p$ form an over-estimating
+upper envelope, $w\ge 0$ and $w\ge y+p-1$ an under-estimating lower envelope,
+and the feasible $w$ is squeezed between them. Because both factors lie in
+$[0,1]$, this box is the \emph{tight convex hull} of the graph of $y\,p$: the
+smallest convex relaxation over the interior, and at each of the four integer
+vertices $(y,p)\in\{0,1\}^2$ the upper and lower planes pinch shut so that
+$w_{i,c,k}=y_{i,c}\,p$ holds \emph{exactly}, with no relaxation gap. Since
+$y_{i,c}$ is one-hot and residency rounds to $\{0,1\}$, the solution lands
+only on these gap-free corners, so \eqref{eq:mcc_box} introduces no tuning
+constants and no bias. The same construction handles the two tile-to-residency
+families $z^{\mathrm{act}}_{e,c,t}$, $z^{W}_{i,c,t}$ of the tile-dependent
+LP \eqref{eq:v1}.
+
+\paragraph{A matrix that explodes.}
+Exactness is bought with size. Each bilinear product spends one auxiliary
+variable and four inequalities (three coupling rows plus a nonnegativity
+bound), replicated over every $(\text{operation},\text{tile
+config},\text{tensor})$ triple. Summed over the network this dominates the
+program. For DeepSeek-V3 the \Vone{} LP reaches roughly $2{,}504{,}019$
+variables, $2{,}983{,}450$ constraints, and $6{,}094{,}156$ nonzeros, of which
+the McCormick auxiliaries and their selection partners are the large majority.
+Worse than its size, the matrix is severely \emph{ill-conditioned}: the
+objective and constraint coefficients span about ten orders of magnitude,
+because Timeloop per-tile cycle counts run from $10^{3}$ to $10^{10}$ while the
+residency and byte terms are $O(1)$ and the roofline memory term scales as
+$1/\text{BW}$; the products injected by \eqref{eq:mcc_box} sit at the extreme
+ends of this range simultaneously. State it plainly: this blow-up is
+acceptable \emph{only} because we have a solver that can handle a
+multi-million-variable, ten-orders-ill-conditioned LP in seconds. Standard
+tools cannot. The remainder of this section is that solver.
+
+\subsection{The Variable-Metric-One-Armed-Rescue Solver}
+\label{sec:vm_solver}
+
+We solve the McCormick-blown-up LP with a custom, matrix-free, first-order GPU
+solver written in JAX, which we call \textbf{VM-One-Armed-Rescue}. Its
+backbone is restarted \emph{primal-dual hybrid gradient}
+(PDHG)~\citep{chambolle2011first} in the practical PDLP
+lineage~\citep{applegate2025pdlp,applegate2026pdlp}: every iteration is a pair
+of sparse matrix-vector products and elementwise projections costing
+$\mathcal{O}(\mathrm{nnz})$, with no factorization ever formed. This is what
+lets a two-million-variable LP live entirely on a single GPU. Three
+ingredients turn the generic restarted PDHG of GPU solvers such as
+cuPDLP~\citep{lu2024cupdlpjlgpuimplementationrestarted,%
+lu2025cupdlpxenhancedgpubasedfirstorder} into a method that actually converges
+on our instances:
+\begin{itemize}[leftmargin=1.5em, itemsep=1pt, topsep=2pt]
+  \item \textbf{Diagonal variable-metric rescaling.} Rather than a fixed
+  Euclidean metric, we precondition primal and dual iterates with a diagonal
+  variable metric, initialized by Ruiz-style
+  equilibration~\citep{ruiz2001scaling} of the coefficient matrix and then
+  driven online by a smoothed estimate of
+  $\sqrt{r_{\mathrm{dual}}/r_{\mathrm{primal}}}$, the square-root ratio of dual
+  to primal residual. This rebalances the two sides of the saddle point that
+  the ten-orders coefficient spread would otherwise pull apart.
+  \item \textbf{One-sided ``rescue'' restart.} Stock PDLP restarts the primal
+  and dual symmetrically; on our ill-conditioned LPs that heuristic overshoots
+  and the duality gap oscillates without settling. VM-One-Armed-Rescue instead
+  restarts \emph{asymmetrically}, re-anchoring only the side (the ``one arm'')
+  whose residual is lagging, so the trailing side is rescued without
+  destabilizing the side that is already converging.
+  \item \textbf{Halpern anchoring.} Restarts use Halpern-style
+  anchoring~\citep{halpern1967fixed} toward the last restart point, which
+  contracts the iterates and yields the stable, monotone convergence that the
+  bare restart heuristic lacks.
+\end{itemize}
+A JIT-compiled \texttt{lax.scan} batches ${\sim}10^{5}$ inner iterations onto
+the accelerator at a few microseconds each and fuses the equilibration loop
+into a single kernel.
+
+\paragraph{Why it matters.}
+On the \Vone{}-scale co-design LP, off-the-shelf solvers do not deliver a
+usable solution: CPU simplex and barrier (HiGHS) exhaust factorization memory
+or stall on the badly scaled matrix, and stock first-order GPU solvers
+(cuPDLP) leave the duality gap oscillating rather than closing it.
+VM-One-Armed-Rescue solves the same instances to primal--dual convergence in
+\emph{seconds} on one GPU (the eight production blueprints report the
+custom JAX PDHG solving the \Vone{} LP in $1.7$--$6.7$\,s), landing within a
+bounded, reported rounding gap of the mature HiGHS optimum wherever HiGHS can
+reach one. To our knowledge this is the first solver to make the
+McCormick-linearized \emph{joint} tiling-plus-fusion-plus-placement co-design
+LP tractable at LLM scale, and that tractability is precisely what makes the
+inner LP cheap enough to sit inside a thousands-of-trials outer search rather
+than a one-off solve.
+
+\paragraph{Scope of the claim.}
+We state the solver claim exactly where it holds. VM-One-Armed-Rescue is
+engineered for, and validated on, the \Vone{} and tile-dependent LLM-scale LPs
+of the ${\sim}2.5$M-variable class characterized above (the LPs that emit
+the blueprints), and it is on those instances that the contrast with HiGHS
+above is measured. We do \emph{not} claim it solves the strictly larger
+monolith that additionally lifts the chip choice into a single program: the
+Tier-1 hardware-menu LP for DeepSeek-V3 reaches roughly $20.7$M variables and
+$33.3$M constraints, and on that instance VM-One-Armed-Rescue did not converge;
+neither did HiGHS, which stalled at the time limit without reaching
+primal feasibility. That both a GPU first-order method and a mature
+simplex/barrier code fail on the menu monolith is exactly what motivates
+decomposing it rather than solving it whole; the ${\sim}2.5$M-variable
+per-workload LP is the tractable unit the outer search is built on.

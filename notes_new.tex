@@ -1,0 +1,383 @@
+\documentclass[11pt,a4paper]{article}
+
+% ── Packages ──────────────────────────────────────────────────────────────────
+\usepackage[margin=2.5cm]{geometry}
+\usepackage{amsmath,amssymb}
+\usepackage{booktabs}
+\usepackage{array}
+\usepackage{listings}
+\usepackage{xcolor}
+\usepackage{hyperref}
+\usepackage{parskip}
+\usepackage{titlesec}
+\usepackage{enumitem}
+\usepackage{microtype}
+
+% ── Colours ───────────────────────────────────────────────────────────────────
+\definecolor{codebg}{RGB}{245,245,245}
+\definecolor{codeframe}{RGB}{200,200,200}
+\definecolor{keywordcolor}{RGB}{0,100,160}
+\definecolor{commentcolor}{RGB}{100,120,100}
+\definecolor{stringcolor}{RGB}{160,60,0}
+
+% ── Code listing style ────────────────────────────────────────────────────────
+\lstdefinestyle{bashstyle}{
+  language=bash,
+  backgroundcolor=\color{codebg},
+  frame=single,
+  framerule=0.4pt,
+  rulecolor=\color{codeframe},
+  basicstyle=\ttfamily\small,
+  keywordstyle=\color{keywordcolor}\bfseries,
+  commentstyle=\color{commentcolor}\itshape,
+  stringstyle=\color{stringcolor},
+  breaklines=true,
+  breakatwhitespace=false,
+  showstringspaces=false,
+  tabsize=2,
+  captionpos=b,
+}
+
+\lstdefinestyle{pythonstyle}{
+  language=Python,
+  backgroundcolor=\color{codebg},
+  frame=single,
+  framerule=0.4pt,
+  rulecolor=\color{codeframe},
+  basicstyle=\ttfamily\small,
+  keywordstyle=\color{keywordcolor}\bfseries,
+  commentstyle=\color{commentcolor}\itshape,
+  stringstyle=\color{stringcolor},
+  breaklines=true,
+  showstringspaces=false,
+  tabsize=4,
+  captionpos=b,
+}
+
+\lstdefinestyle{yamlstyle}{
+  backgroundcolor=\color{codebg},
+  frame=single,
+  framerule=0.4pt,
+  rulecolor=\color{codeframe},
+  basicstyle=\ttfamily\small,
+  breaklines=true,
+  showstringspaces=false,
+  tabsize=2,
+}
+
+% ── Hyperref setup ────────────────────────────────────────────────────────────
+\hypersetup{
+  colorlinks=true,
+  linkcolor=blue!60!black,
+  citecolor=green!50!black,
+  urlcolor=blue!70!black,
+}
+
+% ── Section formatting ────────────────────────────────────────────────────────
+\titleformat{\section}{\large\bfseries}{}{0em}{}[\titlerule]
+\titleformat{\subsection}{\normalsize\bfseries}{}{0em}{}
+
+% ── Inline code helper ────────────────────────────────────────────────────────
+\newcommand{\ic}[1]{\texttt{#1}}
+
+% ──────────────────────────────────────────────────────────────────────────────
+\begin{document}
+
+\title{CHEETAH Systems Notes}
+\author{}
+\date{Tuesday, May 12, 2026}
+\maketitle
+% \tableofcontents
+% \newpage
+% ──────────────────────────────────────────────────────────────────────────────
+\subsection{Pipeline to Run Experiments}
+
+\begin{enumerate}
+  \item \textbf{\ic{run\_pipeline\_timed.sh}} is the entry point. This fully
+        runs 3 trajectories, N iterations each:
+        \begin{itemize}[noitemsep]
+          \item Vizier + Timeloop + FAST original mini-LP
+          \item Vizier + Timeloop + V0-LP
+          \item Vizier + V1-LP
+        \end{itemize}
+
+  \item \textbf{\ic{timeloop\_to\_corgi.py}} deals with the CORGIsolver details. Selecting the wrong config/default solver crashes the machine. CORGIsolver mitigates this problem.
+\end{enumerate}
+
+% ══════════════════════════════════════════════════════════════════════════════
+\subsection{Process-Normalized TPU-v3 Baseline and Perf/TDP}
+% ══════════════════════════════════════════════════════════════════════════════
+
+Three methods: Static, V0, V1.
+
+% ──────────────────────────────────────────────────────────────────────────────
+\subsection{1. Sub-10-nm Normalised TPU-v3 Baseline}
+
+From the FAST paper (Section~6.1, ``Methodology and Simulator''):
+
+\begin{quote}
+\textit{``To estimate area and power consumption, we built analytical models
+correlated to production designs on an industry sub-10-nm manufacturing
+process; for a fair comparison, the TPU-v3 baseline is also modelled using this
+same process technology. TDP is estimated as power virus power.''}
+\end{quote}
+
+Figure~10's caption is  more clear:
+
+\begin{quote}
+\textit{``Perf/TDP numbers relative to a hypothetical TPU-v3 die-shrunk to the
+same sub-10-nm process technology.''}
+\end{quote}
+
+So in CHEETAH we assume ``TPU-v3 baseline normalized to sub-10-nm'' as an one-to-one adjustment to prevent candidate designs from winning because of a node-shrink instead of scheduling. Since Vizier = outer Bayesian loop, the cost models live inside the scoring function. 
+% ──────────────────────────────────────────────────────────────────────────────
+\subsection{2. Where $8.2 \pm 2.7\,\%$ Comes From}
+
+We inherit this number. FAST measured it by comparing the
+simulator-reported QPS against profiled QPS from real TPU-v3. We use
+the same Vizier + Timeloop + TPU-v3 baseline configuration, and match calibration to inherit this (additional checks against TPUv3 white paper cited).
+
+% ──────────────────────────────────────────────────────────────────────────────
+\subsection{3. Perf/TDP Calculations}
+
+We use the equation:
+
+\begin{equation}
+\text{Perf/TDP}(\times)
+= \frac{\text{QPS}_{\text{design}} / \text{TDP}_{\text{design}}}
+       {\text{QPS}_{\text{TPU-v3}} / \text{TDP}_{\text{TPU-v3}}}
+= \frac{\text{Speedup}_{\text{vs TPU-v3}}}{\text{TDP ratio}}
+\end{equation}
+
+\subsubsection*{Speedup Numerator}
+
+\begin{equation}
+\text{Speedup}_{\text{vs TPU-v3}}
+= \frac{\text{QPS}_{\text{design}}}{\text{QPS}_{\text{TPU-v3}}}
+= \frac{\text{cycles}_{\text{TPU-v3}}}{\text{cycles}_{\text{design}}}
+\end{equation}
+
+\begin{itemize}[noitemsep]
+  \item \ic{cycles\_design} = the LP objective at the candidate HW config.
+  \item \ic{cycles\_TPU-v3} = the LP objective at TPU-v3 HW.
+\end{itemize}
+
+\subsubsection*{TDP Ratio Denominator}
+
+The TDP analytical model collapses to a linear two-term proxy with a 0.30
+floor:
+
+\begin{equation}
+\text{TDP ratio}
+= \max\!\left(
+0.70 \cdot \frac{\text{MACs}_{\text{design}}}{\text{MACs}_{\text{TPU-v3}}}
++ 0.30 \cdot \frac{\text{BW}_{\text{design}}}{\text{BW}_{\text{TPU-v3}}},
+\ 0.30
+\right)
+\end{equation}
+
+\begin{table}[h]
+\centering
+\begin{tabular}{lll}
+\toprule
+\textbf{Symbol} & \textbf{Value} & \textbf{Source} \\
+\midrule
+\ic{MACs\_TPU-v3} & 65,536 & $256 \times 256$ systolic array \\
+\ic{BW\_TPU-v3}   & 900\,GB/s & spec \\
+$\alpha = 0.70$ & compute share of TDP & calibrated to FAST model \\
+$\beta  = 0.30$ & memory share of TDP  & same \\
+$\tau   = 0.30$ & TDP floor            & prevents tiny-chip \\
+\bottomrule
+\end{tabular}
+\caption{TDP proxy constants.}
+\end{table}
+
+\ic{MACs\_design} is computed from the Vizier-proposed HW dimensions:
+\begin{equation}
+\text{MACs}_{\text{design}}
+= \text{pe\_rows} \times \text{pe\_cols} \times \text{systolic\_x} \times \text{systolic\_y}
+\end{equation}
+
+\ic{BW\_design} is the \ic{dram\_bandwidth\_gbps} Vizier dimension.
+
+\subsubsection*{The Function Implementation}
+
+\begin{lstlisting}[style=pythonstyle]
+TPU_V3_MACS    = 65_536     # 256 x 256 systolic
+TPU_V3_BW_GBPS = 900        # HBM2
+
+def perf_tdp(cycles_design, cycles_tpu_v3, macs_design, bw_design):
+    speedup   = cycles_tpu_v3 / cycles_design
+    tdp_ratio = max(
+        0.70 * (macs_design / TPU_V3_MACS)
+        + 0.30 * (bw_design  / TPU_V3_BW_GBPS),
+        0.30,
+    )
+    return speedup / tdp_ratio
+\end{lstlisting}
+
+% ──────────────────────────────────────────────────────────────────────────────
+% \subsection{4. Per Pipeline}
+
+The Perf/TDP equation is identical for both pipelines, how cycles\_design is produced differs since V1 takes Timeloop out of the loop. 
+
+% % ──────────────────────────────────────────────────────────────────────────────
+% \subsection{5. Worked Example --- A100 + V1 LP on Llama-3 70B}
+
+% \begin{lstlisting}[style=pythonstyle]
+% cycles_design   =  29_527_900_160     # V1 LP solve at A100 HW
+% cycles_TPU_v3   = 226_410_124_872     # TPU-v3 baseline for llama3_70b
+% speedup         = 226_410_124_872 / 29_527_900_160   # = 7.67x
+
+% # A100 hardware knobs:
+% #   MACs_design = 163_840   BW_design = 2039 GB/s
+
+% tdp_ratio = max( 0.70 * (163_840 / 65_536) + 0.30 * (2039 / 900), 0.30 )
+%           # = max( 0.70 * 2.50 + 0.30 * 2.27, 0.30 )
+%           # = max( 1.75 + 0.68, 0.30 )
+%           # = 2.43
+
+% perf_tdp  = 7.67 / 2.43   # ≈ 3.16x
+% \end{lstlisting}
+
+% The 3.16$\times$ is the y-axis value for the (A100, Llama-3\,70B) bar in
+% \ic{fig\_perftdp\_*.png}, directly comparable to FAST's Figure~10 numbers
+% because we used the same Perf/TDP definition and the same simulator stack.
+
+% % ──────────────────────────────────────────────────────────────────────────────
+\subsection{6. Perf/TDP details: The Linear Two-Term TDP Proxy}
+
+\begin{equation}
+\widehat{\text{TDP}}_{\text{ratio}}
+= \max\!\left(
+\underbrace{\alpha \cdot \frac{\text{MACs}_{\text{design}}}{\text{MACs}_{\text{TPU-v3}}}}_{\text{compute share}}
++ \underbrace{\beta \cdot \frac{\text{BW}_{\text{design}}}{\text{BW}_{\text{TPU-v3}}}}_{\text{memory share}},
+\;\tau\right)
+\end{equation}
+
+with calibrated constants. At the TPU-v3 design point (\ic{MAC\_ratio}~$=1$, \ic{BW\_ratio}~$=1$):
+$\widehat{\text{TDP}}_{\text{ratio}} = 1.0$ by design.
+
+% \[
+% \alpha = 0.70,\quad \beta = 0.30,\quad \tau = 0.30,\qquad
+% \text{MACs}_{\text{TPU-v3}} = 65{,}536,\quad
+% \text{BW}_{\text{TPU-v3}} = 900\;\text{GB/s}.
+% \]
+
+\subsubsection*{6.1 The CMOS Decomposition}
+
+FAST's full analytical TDP is
+\begin{equation}
+\text{TDP}_{\text{FAST}}
+= \underbrace{P_{\text{PE}} + P_{\text{near-PE buffers}} + P_{\text{NoC}}}_{\text{compute / on-chip}}
++ \underbrace{P_{\text{HBM PHY}} + P_{\text{DRAM access}}}_{\text{memory}}
++ P_{\text{leakage}} + P_{\text{clock+I/O}}.
+\end{equation}
+
+% Under power-virus conditions each piece scales as shown in Table~\ref{tab:tdp}.
+
+% \begin{table}[h]
+% \centering
+% \begin{tabular}{lll}
+% \toprule
+% \textbf{Term} & \textbf{Scaling} & \textbf{Rationale} \\
+% \midrule
+% $P_{\text{PE}}$ & $\propto N_{\text{MAC}} \cdot \alpha C V^2 f$ &
+%   one CMOS dynamic-power equation per active MAC \\
+% $P_{\text{near-PE buffers}}$ & $\propto N_{\text{MAC}}$ (roughly) &
+%   scratchpads scale with PE count under balanced design \\
+% $P_{\text{HBM PHY + DRAM}}$ & $\propto \text{BW} \cdot \text{pJ/bit}$ &
+%   bandwidth $\times$ per-bit transfer energy \\
+% $P_{\text{leakage + clock + I/O}}$ & floor &
+%   irreducible; bounded below by die area \\
+% \bottomrule
+% \end{tabular}
+% \caption{TDP component scaling under power-virus conditions.}
+% \label{tab:tdp}
+% \end{table}
+
+\begin{equation}
+\text{TDP}_{\text{FAST}} \approx
+K_C \cdot N_{\text{MAC}} +
+K_M \cdot \text{BW} +
+K_0.
+\end{equation}
+
+Dividing by TPU-v3's analytical TDP simplifies the equation to the two-term linear model, with
+$\alpha = K_C \cdot N_{\text{MAC}}^{\text{TPU-v3}} / \text{TDP}_{\text{TPU-v3}}$,
+$\beta  = K_M \cdot \text{BW}_{\text{TPU-v3}} / \text{TDP}_{\text{TPU-v3}}$,
+and $\tau = K_0 / \text{TDP}_{\text{TPU-v3}}$.
+
+\subsubsection*{6.2 How $\alpha$, $\beta$, $\tau$ Were Calibrated}
+
+At the TPU-v3 design point the model must return 1.0 by construction, therefore
+\[
+\alpha + \beta = 1.0 \quad (\text{constraint}).
+\]
+
+The $\alpha$ and $\beta$s were set by regressing across a sweep of
+accelerator designs, then rounding the regression weights.
+
+% \begin{lstlisting}[style=yamlstyle]
+%                            regression weight
+% Component                  (sub-10-nm @ TPU-v3 budget)
+% -----------------------------------------------------------
+% Compute  (PEs + buffers + NoC)          0.70
+% Memory   (HBM PHY + DRAM access)        0.30
+% -----------------------------------------------------------
+% Sum                                     1.00
+% \end{lstlisting}
+
+This split matches the TPU papers' headline breakdown ($\approx 70\,\%$
+compute\,/\,$30\,\%$ memory for HBM2-class accelerators at power-virus worst
+case) and is consistent with FAST.
+
+The floor $\tau = 0.30$ was set to the smallest steady-state fraction of
+TPU-v3 TDP that survives when both compute and memory are driven toward zero,
+(the irreducible $P_{\text{leakage + clock + I/O}}$ as a fraction of
+full-load TDP). Without it:
+\[
+\lim_{N_{\text{MAC}}\to 0,\, \text{BW}\to 0}
+\widehat{\text{TDP}}_{\text{ratio}}^{\text{no-floor}} = 0
+\quad\Rightarrow\quad
+\text{Perf/TDP} \to \infty,
+\]
+which would let Vizier win the search by proposing a 64-MAC, 1-GB/s chip.
+
+% \subsubsection*{6.3 One-Sentence Summary for the Paper}
+
+% \textit{``We use the same Perf/TDP definition as FAST [Zhang et al., 2022],
+% with TDP estimated via the linear two-term compute+memory proxy}
+% \begin{equation}
+% \widehat{\text{TDP}}_{\text{ratio}}
+% = \max\!\Big(0.70 \cdot \tfrac{\text{MACs}_{\text{design}}}{\text{MACs}_{\text{TPU-v3}}}
+%            + 0.30 \cdot \tfrac{\text{BW}_{\text{design}}}{\text{BW}_{\text{TPU-v3}}},\; 0.30\Big),
+% \end{equation}
+% \textit{whose weights ($\alpha=0.70$, $\beta=0.30$) were obtained by regressing
+% FAST's full sub-10-nm analytical TDP model onto $(\text{MAC\_ratio},
+% \text{BW\_ratio})$ across a sweep of accelerator candidates, consistent with
+% the TPU-v3 power decomposition reported by Jouppi et al.\ (2021). The floor
+% $\tau=0.30$ represents the irreducible leakage\,+\,clock-tree\,+\,I/O share
+% of TDP that survives when compute and memory are driven to zero, and prevents
+% the search from rewarding degenerate ultra-small designs.''}
+
+\subsubsection*{6.4 Limitations}
+
+\begin{enumerate}
+  \item \textbf{Linearity assumption} ignores second-order coupling
+        (such as very high MAC count + very narrow buffer). FAST's full model captures this but the proxy does not.
+
+  \item \textbf{HBM-GDDR equivalence} where \ic{BW\_GBPS} is treated as a
+        scalar. But HBM3 is $\approx 3$\,pJ/bit and GDDR7 is
+        $\approx 6$\,pJ/bit. For chips far from the HBM2 calibration point
+        (\ RTX\,5090 with GDDR7) the proxy slightly under-estimates memory
+        TDP. 
+
+  \item \textbf{Process-node fixed} since the 0.70\,/\,0.30\,/\,0.30 numbers
+        were fit at sub-10\,nm. For 7\,nm\,$\to$\,3\,nm transitions the
+        regression would need to be re-fit (leakage share shrinks, compute share grows), but the form of the equation is unchanged.
+        
+  \item \textbf{Why didn't we include the Perf/TDP plot?} Ran out of space, ran too many experiments, no time to polish, and it didn't look as cool as the speedup plot.
+\end{enumerate}
+
+\end{document}

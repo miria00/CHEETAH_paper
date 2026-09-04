@@ -1,0 +1,41 @@
+\section{Conditioning of the Comprehensive Program: The Case for Variable-Metric Rescaling}
+\label{app:socp_conditioning}
+
+\emph{This appendix records a preliminary numerical finding, noted here for further
+discussion and to motivate the solver of Section~\ref{sec:solver_vm} as a
+contribution in its own right.}
+
+Assembling the comprehensive CHEETAH-V1 program (\cref{app:master_v3}) as a single
+monolithic conic program for DeepSeek-V3 -- with all decisions as decision variables
+and the hardware reciprocals as exact rotated second-order cones -- yields a
+compact but severely ill-conditioned instance ($11{,}599$ variables, $32{,}582$
+inequality rows, two exact SOC cones, and the McCormick envelopes for the genuine
+bilinears). In natural units the coefficient dynamic range spans roughly
+$3\times10^{27}$, dominated by the big-$M$ constants ($\sim\!10^{18}$) in the
+indicator and capacity rows that link the discrete residency and one-hot selections
+to the continuous schedule.
+
+At this conditioning, \emph{off-the-shelf conic solvers do not solve the program.}
+An interior-point conic solver (Clarabel) reports a spurious \texttt{unbounded}
+status; a second interior-point solver (ECOS) raises a numerical exception; and a
+first-order solver (SCS) returns bound-violating iterates (for example a negative
+provisioned bandwidth) even after $10^5$ iterations. A simple \emph{exact} diagonal
+unit rescaling -- expressing latency in units of $10^{9}$ cycles and traffic in
+units of $10^{6}$ bytes, which leaves the optimum unchanged -- compresses the
+dynamic range to $\sim\!4.5\times10^{15}$ and restores solvability: Clarabel then
+returns an \texttt{optimal} solution in about $0.6$ seconds. Even after rescaling
+the program remains \emph{stiff}: the interior-point method intermittently stalls at
+suboptimal points that it nonetheless flags \texttt{optimal}, so a multi-start (a
+mild perturbation of the compute floor) is required to certify the true optimum.
+
+This is precisely the regime that the VM-One-Armed-Rescue solver of
+Section~\ref{sec:solver_vm} is designed for: a restarted primal-dual hybrid gradient
+method with a \emph{diagonal variable-metric rescaling} and a one-sided rescue
+restart. The finding above is direct evidence that the comprehensive co-design
+program, once every decision and the hardware reciprocals are folded in, is not
+reliably solvable by stock conic solvers without such rescaling and restart
+machinery. We view this as strengthening the case for VM-One-Armed-Rescue as a
+contribution: the more expressive the co-design program becomes, the more its
+conditioning, rather than its size, is the binding obstacle, and the more a
+metric-aware first-order solver is required to make it tractable. A full
+solver-versus-solver comparison at this scale is left as immediate future work.

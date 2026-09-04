@@ -1,0 +1,250 @@
+\subsection{Sensitivity to serving batch size}
+\label{sec:batch_sensitivity}
+
+\todo{STRUCTURAL: this section currently has NO antecedent. The base serving
+result at $B{=}32$ is only in App.~N (p.~91). Promote it into a new subsection
+placed BEFORE this one, and lift 6.7--6.12 into their own section
+``Serving-Regime Co-Design''. Also integrate the LLM outer-loop result
+($44.83\times \to 73.00\times$, gate-legal, certified stop), which appears
+nowhere in the paper.}
+The serving results above are reported at a decode batch of $32$. Batch is a
+workload parameter rather than a decision variable, but it is not a neutral one:
+it reshapes the program's coefficients in four places at once, namely the
+mixture-of-experts reload traffic through the number of distinct experts a step
+touches, the decode compute, the KV read, and the array utilization of the
+decode operator. We therefore rebuild the program at
+$B \in \{1, 8, 32, 128\}$ and re-certify, comparing in each case against a
+TPU-v3 baseline evaluated at the \emph{same} batch, so that the comparison is
+like for like at every operating point.
+
+\Cref{tab:batch} reports the result. Two things follow, and the second is
+specific to mixture-of-experts serving.
+
+\paragraph{The advantage is not an artifact of the operating point, and
+$B=32$ is conservative.}
+The certified serving speedup is $33.1\times$ at $B=1$ and rises monotonically
+to $48.6\times$ at $B=128$. The claim of a large serving advantage therefore
+does not depend on a favorable choice of batch: it holds from single-stream
+interactive decoding to throughput-oriented batch serving, and the batch we
+report elsewhere sits below the most favorable point rather than at it. The
+increase with batch has a simple cause: the fixed baseline must stream a reload
+that grows with batch across a bandwidth it cannot change, whereas the
+co-designed chip provisions bandwidth and applies the byte-reducing decisions, so
+the gap widens exactly where the baseline is most starved.
+
+\paragraph{Batching is a weak amortizer for a sparse mixture of experts, which
+is why speculation retains its value.}
+For a dense model, a larger batch amortizes each weight load perfectly: the same
+weights serve every token in the batch. Top-$k$ routing breaks this. The
+expected number of distinct experts touched per step follows
+$n(1 - (1 - k/n)^B)$, so a larger batch touches \emph{more} experts and the
+reload grows: from $19$~GB per step at $B=1$ to $598$~GB at $B=128$ in
+\cref{tab:batch}. Per token the reload does fall, from $19$ to $4.7$~GB, but
+this is a $4\times$ amortization for a $128\times$ increase in batch, and it
+saturates once essentially every expert is swept ($251.6$ of $256$ at $B=128$).
+The consequence is that the decode memory wall is not a low-batch phenomenon
+that disappears under load, and the optimal speculative width does not
+collapse as batch grows but \emph{increases} with it: $K^\star$ doubles with
+every fourfold increase in batch, from $2$ at $B=1$ through $8$ and $16$ to
+$32$ at $B=128$. The reason is visible in the same table: because the reload
+grows with batch, each verification pass has more traffic to amortize, so wider
+speculation keeps paying. Speculation and batching are commonly described as
+competing amortizers; for a sparse mixture of experts they are better described
+as complementary, since batching amortizes the reload far less effectively than
+it does for a dense model and thereby leaves the work that speculation does.
+
+\begin{table}[h]
+\centering
+\footnotesize
+\caption{Certified serving speedup against a TPU-v3 baseline evaluated at the
+same batch ($p = 0.75$, $1$~GB diffusion draft). $\mathbb{E}[\text{experts}]$ is
+the expected number of distinct routed experts touched per decode step, out of
+$256$. Best-of-$K$ is the certified achievable design at that batch. All
+entries, including the baselines, come from one search setting
+(\cref{app:coeff_provenance}): a $24$-point grid on the compute reciprocal, an
+integral bandwidth branch, and full enumeration of the precision, sparsity,
+memory-technology and array-aspect selectors.}
+\label{tab:batch}
+\begin{tabular}{@{}rrrrrrrl@{}}
+\toprule
+$B$ & $\mathbb{E}[\text{experts}]$ & Reload (GB/step) & $K{=}2$ & $K{=}8$ &
+$K{=}16$ & $K{=}32$ & Best \\
+\midrule
+$1$   & $8.0$   & $19.0$  & $\mathbf{33.13}\times$ & $30.12\times$ & $23.28\times$ & $15.69\times$ & $33.13\times$ at $K^\star{=}2$ \\
+$8$   & $57.4$  & $136.6$ & $28.35\times$ & $\mathbf{36.76}\times$ & $32.18\times$ & $24.32\times$ & $36.76\times$ at $K^\star{=}8$ \\
+$32$  & $163.3$ & $388.5$ & $28.56\times$ & $43.03\times$ & $\mathbf{44.85}\times$ & $36.01\times$ & $44.85\times$ at $K^\star{=}16$ \\
+$128$ & $251.6$ & $598.5$ & $29.02\times$ & $46.11\times$ & $48.39\times$ & $\mathbf{48.64}\times$ & $48.64\times$ at $K^\star{=}32$ \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\subsection{Performance per TDP}
+\label{sec:perf_tdp}
+
+Speedup alone does not settle whether a design is worth building: a chip that is
+fast because it is large is not obviously an advance. FAST~\citep{zhang_fast}
+therefore searches on performance per unit power, and reports a headline of
+about $3.7\times$ over its baseline. We evaluate the same quantity on the
+designs of \cref{tab:batch}, using one power model for both sides
+(\cref{app:coeff_provenance}) so that the ratio is convention-consistent:
+$\mathrm{Perf/TDP} = \text{speedup} / (\mathrm{TDP}_{\text{design}} /
+\mathrm{TDP}_{\text{baseline}})$, with the TPU-v3 baseline at $41.9$~W.
+
+\Cref{tab:perftdp} reports the result. \todo{RECONCILE with Sec.~TCO, which reports $1.15$--$1.79\times$ and a
+${\sim}0.8\times$ no-break-even case. Different baselines and conventions
+(serving design under the FAST TDP-ratio convention here, prefill blueprint
+under the MAC-normalized convention there). State this explicitly in both
+places or a reviewer reads a self-contradiction.}
+Performance per TDP rises from
+$2.73\times$ at $B=1$ to $4.83\times$ at $B=128$, exceeding the FAST headline
+for batches of $32$ and above and approaching it at $B=8$. Two points are worth
+making precisely. First, the designs are selected by \emph{serving latency},
+not by performance per TDP, so this is the efficiency of a latency-optimal
+design rather than the best efficiency the program can reach; searching the same
+certified frontier on performance per TDP directly moves the figure by less than
+$2\%$ at $B \le 8$ and selects the identical design at $B=32$, which indicates
+that the speedup is not being bought with disproportionate power. Second, the
+efficiency improves with batch for the same structural reason the speedup does:
+the fixed baseline must stream a reload that grows with batch across bandwidth
+it cannot change, while the co-designed chip holds a single $24.4\times$-MAC,
+$3200$~GB/s configuration across $B \in \{8, 32, 128\}$ and simply serves more
+tokens per unit of that fixed power.
+
+\begin{table}[h]
+\centering
+\footnotesize
+\caption{Performance per TDP of the certified designs of \cref{tab:batch}, in
+the FAST convention (speedup normalized by the TDP ratio; TPU-v3 baseline
+$41.9$~W). FAST reports approximately $3.7\times$.
+\todo{VERIFY BEFORE SUBMISSION. Two things to check. (i) At what batch size and
+on what workload is FAST's $3.7\times$ measured? Ours is a serving design at a
+stated decode batch; if FAST's headline is a prefill or single-stream number the
+two are not directly comparable and the caption must say so. (ii) Our margin
+here ($4.45\times$ at $B{=}32$) looks SMALL relative to the raw speedup
+advantage we report elsewhere. Check whether the TDP ratio is being inflated by
+charging full power to a design that is bandwidth-bound and not compute-saturated,
+which would understate Perf/TDP. Recompute with the measured activity factor
+before quoting this as the headline efficiency comparison.}}
+\label{tab:perftdp}
+\begin{tabular}{@{}rrrrrrr@{}}
+\toprule
+$B$ & $K^\star$ & Speedup & MACs & BW (GB/s) & TDP (W) & Perf/TDP \\
+\midrule
+$1$   & $2$  & $33.13\times$ & $31.1\times$ & $3200$ & $509$ & $2.73\times$ \\
+$8$   & $8$  & $36.76\times$ & $24.4\times$ & $3200$ & $422$ & $3.65\times$ \\
+$32$  & $16$ & $44.85\times$ & $24.4\times$ & $3200$ & $422$ & $\mathbf{4.45}\times$ \\
+$128$ & $32$ & $48.64\times$ & $24.4\times$ & $3200$ & $422$ & $\mathbf{4.83}\times$ \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\subsection{Certified bounds and sensitivity to draft acceptance}
+\label{sec:certified_gap}
+
+Every design reported above is a certified achievable point: a concrete,
+feasibility-checked configuration whose serving time we can exhibit. Solving the
+same program with the physically integral selectors relaxed gives the
+complementary quantity, a bound that no design in this model can beat. Together
+they bracket the unknown optimum, and the width of the bracket is a certified
+statement about how much performance could still be left on the table. This is
+the quantity a point estimate cannot provide, and we report it under one search
+configuration so that both ends come from the same search.
+
+\Cref{tab:gap} gives the bracket across batch and draft acceptance. Three
+readings follow. First, \emph{the bracket tightens where throughput serving
+lives}: the gap falls from $63.8\%$ at $B=1$ to $13.5\%$ at $B=128$ with
+$p=0.60$, so in the high-batch regime the optimum is pinned to within about a
+seventh of the achievable value. Second, \emph{acceptance matters unevenly}. At
+$B=1$ the three acceptance columns are identical, because $K^\star=2$ consumes
+almost no acceptance; at $B=128$ the achievable spans $34.6\times$ to
+$66.5\times$ as $p$ moves from $0.60$ to $0.85$. The parameter we state rather
+than measure is therefore nearly inert in the latency regime and dominant in the
+throughput regime, which is where a measured acceptance rate would sharpen the
+result most. Third, \emph{the relaxation loosens as acceptance rises} (from
+$+40.0\%$ to $+59.0\%$ at $B=8$): a higher acceptance rate gives the fractional
+relaxation more room to exploit, so the bound degrades in exactly the regime
+where the achievable improves, and we report both rather than only the
+favourable half.
+
+We note that the operating point used elsewhere in this paper, $p=0.75$, is the
+middle of the swept range: the $p=0.85$ column is materially higher at every
+batch, so the headline figures are conservative on the acceptance axis as well
+as on the batch axis.
+
+\begin{table}[h]
+\centering
+\footnotesize
+\caption{Certified bracket on the serving optimum under one search configuration.
+``Achv'' is the certified achievable design, ``bound'' the relaxed-LP bound that
+no design in this model can beat, and ``gap'' their separation. Both ends are
+computed by the same search, and the $B=32$, $p=0.75$ entry reproduces
+\cref{tab:batch} exactly.}
+\label{tab:gap}
+\begin{tabular}{@{}rr rrr rrr rrr@{}}
+\toprule
+& & \multicolumn{3}{c}{$p=0.60$} & \multicolumn{3}{c}{$p=0.75$} & \multicolumn{3}{c}{$p=0.85$} \\
+\cmidrule(lr){3-5}\cmidrule(lr){6-8}\cmidrule(lr){9-11}
+$B$ & $K^\star$ & Achv & Bound & Gap & Achv & Bound & Gap & Achv & Bound & Gap \\
+\midrule
+$1$   & $2$  & $32.93\times$ & $53.96\times$ & $63.8\%$ & $33.13\times$ & $54.27\times$ & $63.8\%$ & $33.13\times$ & $54.27\times$ & $63.8\%$ \\
+$8$   & $8$  & $31.32\times$ & $43.86\times$ & $40.0\%$ & $36.76\times$ & $55.28\times$ & $50.4\%$ & $40.72\times$ & $64.74\times$ & $59.0\%$ \\
+$32$  & $16$ & $33.46\times$ & $39.91\times$ & $19.3\%$ & $44.85\times$ & $57.26\times$ & $27.7\%$ & $56.85\times$ & $78.38\times$ & $37.9\%$ \\
+$128$ & $32$ & $34.60\times$ & $39.26\times$ & $\mathbf{13.5\%}$ & $48.64\times$ & $58.37\times$ & $20.0\%$ & $66.49\times$ & $86.13\times$ & $29.5\%$ \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\subsection{Does sparse routing cause the effect?}
+\label{sec:dense_control}
+
+The explanation offered above is causal: we claim that the widening of
+$K^\star$ and the growth of the advantage with batch are consequences of top-$k$
+routing, which makes the reload grow with batch instead of amortizing. That
+claim is testable by ablation. We rebuild the identical program with one line
+changed, pinning the expected distinct-expert count to its $B=1$ value so that a
+larger batch reuses the same expert set and weight loads amortize perfectly, as
+they do for a dense model. Model dimensions, KV traffic, decode compute, the
+decision menus, the speculative-width menu, the search setting and the baseline
+convention are untouched, so any difference isolates routing and nothing else.
+The prediction is sharp: under dense-equivalent routing both effects should
+disappear.
+
+\Cref{tab:dense} reports the comparison. They disappear. With the reload pinned
+at $19.0$~GB per step, the selected speculative width is $K^\star = 2$ at every
+batch and the certified speedup is flat near $33\times$, against
+$K^\star = 2, 8, 16, 32$ and $33.1\times$ to $48.6\times$ under real routing.
+The ablation also supplies its own positive control: at $B=1$ sparse and
+dense routing coincide by construction, and the two arms agree to four
+significant figures ($33.13\times$, $K^\star=2$ in both), which confirms that
+the control differs from the treatment in the intended variable only.
+
+We therefore state the mechanism as measured rather than argued. Speculation
+scales with batch in sparse serving because each verification pass has a larger
+reload to amortize; remove that growth and the optimal width collapses to its
+low-batch value. The practical reading is that a serving stack tuned on dense
+models will systematically under-speculate on a mixture of experts, and that the
+error grows with the batch size it was tuned at.
+
+\begin{table}[h]
+\centering
+\footnotesize
+\caption{Controlled ablation of sparse routing. The dense-control column pins the
+distinct-expert count to its $B=1$ value so weight loads amortize perfectly with
+batch; everything else is identical, including the search setting. Both
+signature effects vanish, and the two arms agree exactly at $B=1$, where the
+ablation is a no-op.}
+\label{tab:dense}
+\begin{tabular}{@{}rrrrrr@{}}
+\toprule
+& \multicolumn{2}{c}{Sparse (top-$k$ routing)} & & \multicolumn{2}{c}{Dense control} \\
+\cmidrule(lr){2-3}\cmidrule(lr){5-6}
+$B$ & Reload (GB) & $K^\star$ (speedup) & & Reload (GB) & $K^\star$ (speedup) \\
+\midrule
+$1$   & $19.0$  & $2$  ($33.13\times$) & & $19.0$ & $2$ ($33.13\times$) \\
+$8$   & $136.6$ & $8$  ($36.76\times$) & & $19.0$ & $2$ ($33.08\times$) \\
+$32$  & $388.5$ & $16$ ($44.85\times$) & & $19.0$ & $2$ ($33.06\times$) \\
+$128$ & $598.5$ & $32$ ($48.64\times$) & & $19.0$ & $2$ ($33.24\times$) \\
+\bottomrule
+\end{tabular}
+\end{table}
+

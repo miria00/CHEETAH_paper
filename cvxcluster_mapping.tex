@@ -1,0 +1,381 @@
+\section{Dual Variables for the Outer Loop: A Mapping from Cluster Resource Allocation}
+\label{app:cvx_mapping}
+
+The recipe at the core of CHEETAH, relax a hard discrete resource-allocation
+problem to a convex one, read the dual variables, and use them to
+guide the discrete choices, is not unique to accelerator co-design. The same
+structure appears in large-scale cluster task placement \citep{cvxcluster2026},
+which solves granular server allocation $100$--$1000\times$ faster by (i) relaxing
+the binary task-to-server assignment and \emph{aggregating servers into shapes} so
+the program scales with the number of shapes rather than servers, and (ii)
+extracting the LP's dual variables as per-resource \emph{dual variables} and placing
+tasks greedily by \emph{net utility} $=$ priority $-$ $\sum_{r}(\lambda_r
+\times \text{demand}_r)$, re-evaluating as the load shifts. We already borrow the shape
+aggregation (\cref{app:shape_agg}); this appendix records the full one-to-one
+correspondence and, more usefully, the concrete rule it hands our LLM-guided outer
+loop.
+
+\begin{table}[h]
+\centering
+\small
+\begin{tabular}{@{}p{0.44\linewidth}p{0.5\linewidth}@{}}
+\toprule
+Cluster resource allocation \citep{cvxcluster2026} & CHEETAH co-design \\
+\midrule
+Server (a placement slot) & Operation instance (a node at a position in the graph) \\
+Shape (servers with identical config) & Unique op-shape (ops with identical dims: identical Pareto/roofline data) \\
+Task multi-resource demand (CPU, mem, GPU) & Op demand on the three resources: compute (MACs), traffic (bytes/BW), on-chip capacity (CGM bytes) \\
+Bin / server capacity & CGM capacity per timestep, plus the compute roof and the bandwidth roof \\
+Binary assignment $x\in\{0,1\}$ & Discrete decisions: tile-config $y$, residency $p$, precision $q$, expert-pin $g$, spec-width $K$ \\
+Convex relaxation $x\in[0,1]$ & The LP/SOCP relaxation of the one-hots \\
+Anti-affinity as auxiliary capacity rows & Residency, capacity, and McCormick auxiliary constraints \\
+Dual variables (dual per resource-per-shape) & Lagrangian duals $\lambda_{\mathrm{CGM}},\lambda_{\mathrm{BW}},\lambda_{\mathrm{MAC}},\lambda_{\mathrm{HBM}},\lambda_{\mathrm{cache}},\lambda_{\mathrm{LD}}$ \\
+Net utility $=$ priority $-\sum_r \lambda_r\,\mathrm{demand}_r$ & Reduced cost of a candidate column, $\bar c_j = c_j - \sum_r \lambda_r\, a_{rj}$ \\
+Greedy placement by net utility & Dual-guided rounding of the fractional decisions \\
+Dynamic re-evaluating as load shifts & Re-solve for updated duals as columns / operating point change \\
+Shape aggregation (scale with \#shapes) & Shape aggregation (\cref{app:shape_agg}; $903\to13$ shapes) \\
+\bottomrule
+\end{tabular}
+\caption{One-to-one correspondence between convex cluster resource allocation and
+the CHEETAH co-design program.}
+\label{tab:cvx_mapping}
+\end{table}
+
+\paragraph{Dual variables as the outer-loop search signal.}
+The mapping's payoff is that it makes the LLM-guided outer loop
+(\cref{sec:llm_outer}) a \emph{dual-guided column generator}, exactly as
+\citet{cvxcluster2026} scores task placement. The loop is: (1) solve the inner
+SOCP and read the dual dual vector $\lambda=(\lambda_{\mathrm{CGM}},
+\lambda_{\mathrm{BW}},\lambda_{\mathrm{MAC}},\dots)$ together with the reduced costs
+of the un-chosen columns; (2) the duals \emph{diagnose the bottleneck}, the
+largest $\lambda_r$ marks the scarcest resource, while $\lambda_r\approx0$ marks a
+free one; (3) the LLM proposes candidate columns (a chip parameterisation, a decision
+setting, a tiling) and ranks them by the reduced cost $\bar c_j = c_j -
+\sum_r\lambda_r a_{rj}$, i.e.\ objective gain net of the dual-weighted cost of the
+resources the column consumes; a column with $\bar c_j<0$ improves the design and
+the most negative is the best proposal; (4) re-solve for updated duals and repeat.
+The loop terminates when no proposed column has negative reduced cost, a certified
+no-improving-candidate stop, with the LP bound at the caps quantifying the maximum
+regret of stopping. The LLM only ever \emph{proposes}; the LP scores and certifies,
+so no optimality certificate is ever at risk.
+
+\paragraph{Worked example: the duals point to speculative decoding.}
+On the DeepSeek-V3 decode workload the converged duals are $\lambda_{\mathrm{BW}}
+\gg 0$ (bandwidth is the binding scarcity) and $\lambda_{\mathrm{MAC}}\approx 0$
+(compute is idle, hence free). The reduced-cost rule then \emph{selects} the
+speculative/parallel-decode-width column $K$ without being told to: verifying $K$
+tokens per weight-load spends the near-zero-dual MAC resource to relieve the
+high-scored bandwidth (it amortises the mixture-of-experts weight reload over the
+accepted tokens), so its reduced cost $\bar c_K = c_K - \lambda_{\mathrm{MAC}}\cdot(\text{K's
+compute}) - \lambda_{\mathrm{BW}}\cdot(\text{negative traffic})$ is strongly
+negative precisely because $\lambda_{\mathrm{MAC}}\approx0$ while
+$\lambda_{\mathrm{BW}}$ is large. The weight-precision column $W4$ is the same logic
+on the byte axis (it lowers the $\lambda_{\mathrm{BW}}$-scored traffic directly).
+That the dual variables independently point at the two decisions we found empirically
+to dominate is evidence the signal is the right one.
+
+\paragraph{Dual-guided rounding.}
+The second stage of \citet{cvxcluster2026} also improves our rounding. Where the LP
+relaxation leaves a one-hot selector fractional (in our DeepSeek solves the
+precision and expert-pin selectors), rounding by reduced cost, fixing first the
+selector whose reduced cost most improves the certified bound, then re-solving , 
+is tighter than the $\arg\max$ rounding of \cref{sec:v1}, and is the natural
+integer companion to the dual-guided search above.
+
+\paragraph{Caveat.}
+As in \cref{app:shape_agg}, each round of cluster placement is a static snapshot whereas CHEETAH
+carries a time-indexed residency axis; the correspondence is exact on the
+shape-invariant block (tiling, roofline, hardware, and the decisions), and the
+time-indexed residency is kept per-instance rather than aggregated or scored as a
+snapshot.
+
+\section{What CHEETAH-V1 Decides Inside the Program}
+\label{app:what_v1_decides}
+
+It is worth stating plainly what is a \emph{decision} of the program and what is
+an input to it, because the contribution rests on the boundary between the two.
+In a sequential pipeline the hardware is a fixed input: the mapper is asked how
+fast a given chip runs a given layer. In CHEETAH-V1 the hardware is a variable,
+and the only true constants are the measured Timeloop bases $\Tmin_i(c)$,
+$\Tmax_i(c)$ and the per-tile byte footprints. Every coefficient that a
+sequential flow would bake in is instead a function of decision variables and is
+evaluated inside the constraints.
+
+\paragraph{Hardware, decided rather than given.}
+The MAC count and DRAM bandwidth enter through their reference-normalized
+reciprocals $v$ and $u$, so a tile's compute time $\Tmin_i(c)\,v$ and memory time
+$\Tmax_i(c)\,u$ scale with a chip the program is simultaneously choosing. On-chip
+global memory is a one-hot over a size grid, and the HBM residency pool, the
+prefix-cache size, the load-engine bandwidth, the systolic array aspect ratio and
+the clock and voltage operating point are all selectors in the same program.
+These are not swept in an outer loop and read back; they are columns of the
+constraint matrix.
+
+\paragraph{Schedule, decided jointly with the hardware.}
+Tile configuration per operation, which tensors are resident on chip at each
+timestep, which are evicted, which are rematerialized, and which operations fuse,
+are decided together with the chip rather than after it. This is what allows a
+locally worse tiling to be selected when it produces a globally better schedule,
+a trade a map-then-fuse pipeline cannot represent.
+
+\paragraph{Serving behavior, decided as constraints.}
+Weight, activation and KV precision are one-hot selectors per phase and per
+expert; the KV budget and eviction policy, the mixture-of-experts residency
+knapsack, prefix-cache reuse, structured sparsity, memory technology, the
+prefill--decode interleaving fraction and the speculative width all enter as
+constraint families. Each is inert when pinned, so the program contains the
+simpler formulations exactly.
+
+\paragraph{Manufacturability, enforced rather than checked.}
+Reticle area, TDP, power density, pin count, logic depth, on-chip interconnect
+and SRAM macro decomposition are rows of the program. A design that violates any
+of them is infeasible rather than merely flagged, which is why every design in
+this paper satisfies all six gates by construction.
+
+\paragraph{What remains outside.}
+Accuracy is never linearized: precision entries are admitted only from an
+accuracy-vetted menu, and the program chooses among them without modeling
+quality. Draft acceptance, the decode batch and the generation length are stated
+workload parameters that reshape coefficients but are not decided. Genuinely
+discrete or non-convex axes, such as interconnect radix or the draft model
+itself, remain columns the outer loop proposes and the program admits only if the
+reduced cost is negative and the manufacturability rows clear.
+
+\section{DeepSeek-V3 End-to-End Serving Result}
+\label{app:deepseek_summary}
+
+\Cref{tab:deepseek_summary} collects the DeepSeek-V3 mixture-of-experts result in
+one place: the end-to-end serving speedup with hardware search inside the loop,
+where the time goes, and which mechanism produces the gain. Every symbol is
+defined in the table itself so that it can be read without reference to the body.
+
+\paragraph{The serving model.}
+End-to-end serving latency is modelled as three phases, not two:
+\[
+T_{\mathrm{serve}} \;=\; \underbrace{T_{\mathrm{prefill}}}_{\text{context, once}}
+\;+\; \frac{G}{A(K)}\Big(
+\underbrace{T_{\mathrm{draft}}(K)}_{\text{propose } K \text{ tokens}}
+\;+\;
+\underbrace{T_{\mathrm{pass}}(K)}_{\text{verify them}}\Big),
+\qquad A(K) = \frac{1-p^{K+1}}{1-p},
+\]
+where $G$ is the number of tokens generated and $A(K)$ is the expected number
+accepted per round, so $G/A(K)$ is the number of draft-then-verify rounds. The
+draft term is charged rather than assumed free: for an autoregressive draft it
+grows as $O(K)$, and for the parallel draft used here it is $O(1)$. At this
+operating point the draft is $0.54\%$ of serving, which is small but not zero,
+and it is what keeps the selected $K$ finite.
+
+\paragraph{Operating point.}
+Three numbers fix the workload. The \emph{decode batch} $B = 32$ is the number of
+sequences generated concurrently; it matters because top-$k$ routing makes a
+larger batch touch more experts, so it changes the traffic rather than merely
+amortizing it. The \emph{draft acceptance} $p = 0.75$ is the probability that a
+single token proposed by the draft model is accepted by the target model's
+verification; it is a property of the draft/target pair, so we state and sweep it
+rather than measure it. The \emph{$1$\,GB diffusion draft} is the small
+companion model that proposes candidate tokens: $1$\,GB of weights, and
+``diffusion'' meaning it proposes all $K$ tokens in one parallel pass rather than
+$K$ sequential ones, so its cost does not grow with the speculative width.
+
+\paragraph{Two questions the selected chip raises.}
+The design takes almost no on-chip memory and almost all the bandwidth the
+package permits, and both follow from the same fact. In decode the traffic is
+$388$\,GB per step of mixture-of-experts weights, which is four orders of
+magnitude larger than any on-chip buffer could hold, so additional SRAM has
+nothing useful to retain: the weights cannot be cached and the MLA-compressed KV
+cache is only $4.3$\,GB. On-chip memory therefore collapses to the smallest grid
+point that keeps the schedule feasible, and the area saved is spent elsewhere.
+Bandwidth is the opposite case. It divides the dominant term directly, so the
+program buys as much as the package allows and stops at $3200$\,GB/s because the
+next grid point would need $5250$ signal pins against a $4096$-pin limit. The
+resulting design sits at $4000$ pins, which is $97.7\%$ of that limit. This is
+the clearest single illustration of why the decisions that matter here reduce or
+amortize traffic rather than add storage.
+
+\paragraph{What is solved, and by what.}
+The formulation is written as a second-order cone program because two hardware
+reciprocals are exact rotated cones. In practice we solve \emph{linear programs}:
+the bandwidth reciprocal is already an exact one-hot over a grid, and the
+remaining compute reciprocal is eliminated by fixing $v$ on a fine grid, which
+makes each grid point a pure LP. Those LPs are solved with HiGHS, which returns a
+certified vertex and lets us check every reported design against the constraint
+set independently. The Variable-Metric-One-Armed-Rescue solver is used where the
+LP is too large or too ill-conditioned for a simplex or interior-point method,
+namely the full-resolution instances with per-operation residency, and it agrees
+with HiGHS to $10^{-14}$ on the instances where both can run.
+
+\begin{table}[h]
+\centering
+\footnotesize
+\caption{\textbf{DeepSeek-V3 serving co-design with hardware search inside the
+loop.}
+\emph{Operating point.} Decode batch $B{=}32$ concurrent sequences; draft
+acceptance $p{=}0.75$, the probability one proposed token survives verification;
+a $1$\,GB parallel (diffusion) draft, which proposes all $K$ tokens in one pass
+so its cost does not grow with $K$; context $4096$; $512$ generated tokens.
+Speedups are against a fixed TPU-v3 baseline at the same batch. Every row is an
+achievable design: a concrete configuration, re-solved and checked against the
+constraint set, satisfying all six manufacturability rows.
+\emph{Units.} These vary by block and are stated in each block header; speedups
+are multiples, so $44.85\times$ means $44.85$ times faster, not $44.85\%$.
+\emph{The two speedups answer different questions.} The $44.85\times$ figure is
+the best design reachable \emph{given the option menus the program was handed}
+(a fixed precision set, a fixed set of memory technologies, $K \in
+\{2,8,16,32\}$, and one draft model). The $73.00\times$ figure is what the outer
+loop reaches when allowed to \emph{add entries to those menus}, since an
+optimizer can only select among options it has been given. An entry is any
+option the program could have chosen had it been offered: hardware entries
+include a memory technology with a different bandwidth ceiling, area per GB/s
+and energy per bit, an omitted bandwidth grid point, another on-chip memory
+size, or a different array aspect ratio; software entries include a new
+precision format, a sparsity pattern, a speculative width outside the menu, or a
+different draft model, which is a paired entry carrying both its size and the
+acceptance it achieves. Two were admitted here, one of each kind: a $4$\,GB
+adapted draft assumed to reach $p{=}0.90$, and HBM4-class memory. The program
+admits an entry only if its reduced cost is negative and the manufacturability
+rows still clear.
+\emph{Caveats on the larger number.} It is conditional on the assumed $p{=}0.90$,
+which we state rather than measure, and on HBM4-class memory being available.
+Composition matters: the memory technology is \emph{worse} alone
+($49.28\times$) than the draft entry and pays only in combination, which is why
+the loop re-solves after each acceptance rather than ranking proposals once.}
+\label{tab:deepseek_summary}
+\begin{tabular}{@{}llr@{}}
+\toprule
+\textbf{Quantity} & \textbf{Meaning} & \textbf{Value (unit varies by block)} \\
+\midrule
+\multicolumn{3}{@{}l}{\textbf{End-to-end serving speedup} \emph{(values are $\times$ faster than TPU-v3, not percentages)}} \\
+Best over $K$, fixed menus & best design over the option set the program was & $\mathbf{44.85\times}$ \\
+  & given; $K$ is the speculative width (tokens proposed & \\
+  & per verification pass), chosen from $\{2,8,16,32\}$ & \\
+$+$ outer loop, new options & the loop adds two entries the menus lacked: a & $\mathbf{73.00\times}$ \\
+  & $4$\,GB adapted draft assumed to reach $p{=}0.90$ & \\
+  & (software) and HBM4-class memory (hardware) & \\
+Relaxed bound & no design in this model can beat it & $57.26\times$ \\
+\midrule
+\multicolumn{3}{@{}l}{\textbf{Where the serving time goes} \emph{(values are \% of total serving latency)}} \\
+$T_{\mathrm{prefill}}$ & one compute-bound pass over the $4096$-token context & $42.10\%$ \\
+$(G/A(K))\,T_{\mathrm{draft}}$ & $129$ draft rounds proposing $K$ tokens each & $0.54\%$ \\
+$(G/A(K))\,T_{\mathrm{pass}}$ & $129$ memory-bound verification passes & $57.35\%$ \\
+$A(K)$ & expected tokens accepted per pass at $K^\star{=}16$, $p{=}0.75$ & $3.97$ \\
+$G/A(K)$ & number of draft-then-verify rounds for $G = 512$ tokens & $129$ \\
+\midrule
+\multicolumn{3}{@{}l}{\textbf{What produces the speedup} \emph{(values are cumulative $\times$ speedup, each an achievable design)}} \\
+Hardware sizing & $\mathrm{MACs}$, $\mathrm{BW}$, on-chip memory as variables & $4.73\times$ \\
+$+$ byte reduction & precision $q_\rho$, $2{:}4$ sparsity, memory technology & $16.49\times$ \\
+$+$ speculation & speculative width $K^\star = 16$ & $\mathbf{44.85\times}$ \\
+\midrule
+\multicolumn{3}{@{}l}{\textbf{Why: where the decode bytes go} \emph{(values are \% of decode DRAM traffic)}} \\
+$\Delta^{\mathrm{moe}}$ & mixture-of-experts weight reload, $388.5$ GB/step & $98.6\%$ \\
+$\Delta^{\mathrm{KV}}$ & MLA-compressed KV read, $4.29$ GB/step & $1.1\%$ \\
+$\Delta^{\mathrm{act}}$ & activations, $1.15$ GB/step & $0.3\%$ \\
+\midrule
+\multicolumn{3}{@{}l}{\textbf{The chip the program selected} \emph{(values are physical quantities)}} \\
+$\mathrm{MACs}$ & INT8 multiply--accumulate units ($24.4\times$ TPU-v3) & $1{,}598{,}953$ \\
+$\mathrm{BW}$ & DRAM bandwidth & $3200$ GB/s \\
+$C_{\mathrm{GM}}$ & on-chip global memory & $1.0$ MiB \\
+$n_{\mathrm{PE}}$ & processing elements, $= \lceil \mathrm{MACs}/(s_x s_y)\rceil$ & $98$ \\
+$s_x \times s_y$ & systolic array dimensions per PE (rows $\times$ columns), & $128 \times 128$ \\
+  & giving $16{,}384$ MACs per processing element & \\
+DRAM channels & at ${\sim}100$ GB/s per channel & $32$ \\
+\midrule
+\multicolumn{3}{@{}l}{\textbf{Manufacturability: six of six rows satisfied} \emph{(achieved value vs.\ cap)}} \\
+Pin count & $\mathrm{BW}$ at $0.8$ GB/s per HBM3 pin (cap $4096$) & $4000$ \\
+Reticle area & die area (cap $600$ $\mathrm{mm}^2$) & $497.3$ $\mathrm{mm}^2$ \\
+Power density & dynamic $320$ W over the die (cap $2.0$) & $0.64$ W/$\mathrm{mm}^2$ \\
+Logic depth & gate levels at $1$ GHz (cap $35$) & $25$ \\
+Crossbar & PE-to-bank routing cells (cap $5{\times}10^6$) & $1568$ \\
+SRAM macros & $64$ KiB banks (cap $4096$) & $16$ \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+The decomposition explains itself. Decode dominates serving, and decode is
+almost entirely mixture-of-experts weight traffic, so the mechanisms that reduce
+or amortize that traffic are the ones that matter: sizing bandwidth and on-chip
+memory first, then reducing the bytes through precision and sparsity, then
+amortizing each remaining weight load over more accepted tokens through
+speculation. Tiling and fusion contribute by keeping the prefill phase on its
+compute floor, but they cannot move the decode wall, which is why a formulation
+that decides tiling alone plateaus and one that also sizes the hardware and
+decides the serving decisions does not.
+
+\section{A Worked Example: Hardware Coefficients as Functions, Not Constants}
+\label{app:worked_example}
+
+The central modelling decision in this paper is that hardware quantities enter
+the program as functions of decision variables rather than as fixed
+coefficients. It is worth seeing exactly what that changes on a single concrete
+quantity.
+
+\paragraph{The quantity.}
+Every decode step must read the routed mixture-of-experts weights from DRAM.
+Timeloop measures $388.5$\,GB per step at $8$-bit precision. That byte count is a
+genuine constant: it is a property of the model and its routing, not of any chip.
+The \emph{time} it takes is bytes divided by bandwidth, and that is where the two
+formulations part company.
+
+\paragraph{As a constant, in a sequential pipeline.}
+Fix the chip first at the TPU-v3 bandwidth of $900$\,GB/s. The coefficient is now
+a number,
+\[
+t_{\mathrm{decode}} \;=\; \frac{388.5\ \mathrm{GB}}{900\ \mathrm{GB/s}}
+\;=\; 0.432\ \mathrm{s},
+\]
+and $0.432$ enters the objective as a literal. Asking what a different bandwidth
+would buy requires discarding the program and building another one.
+
+\paragraph{As a function, in CHEETAH-V1.}
+The corresponding row is
+\[
+\tau \;\ge\; \underbrace{\Tmax(c)}_{\text{measured bytes}}
+\;\times\; \underbrace{s^W}_{\text{precision variable}}
+\;\times\; \underbrace{u}_{\text{bandwidth variable}},
+\]
+where $s^W$ is set by the precision one-hot ($1.0$ at W8, $0.5$ at W4) and
+$u = \mathrm{BW_{ref}}/\mathrm{BW}$. Neither factor is a number until the solver
+chooses one.
+
+\paragraph{Why this matters: the two decisions multiply.}
+\Cref{tab:worked_example} evaluates the same row at the four combinations of
+these two decisions. The best cell is $7.11\times$ faster than the baseline, and
+that factor decomposes as $2\times$ from precision and $3.56\times$ from
+bandwidth: the decisions compose rather than compete.
+
+\begin{table}[h]
+\centering
+\footnotesize
+\caption{Decode weight-streaming time for one step of DeepSeek-V3, evaluated at
+each combination of the precision and bandwidth decisions. A pipeline that fixes
+bandwidth before considering precision is confined to the left column.}
+\label{tab:worked_example}
+\begin{tabular}{@{}lcc@{}}
+\toprule
+ & $\mathrm{BW} = 900$\,GB/s & $\mathrm{BW} = 3200$\,GB/s \\
+\midrule
+W8 \quad($388.5$\,GB) & $0.432$\,s \quad (baseline) & $0.121$\,s \\
+W4 \quad($194.3$\,GB) & $0.216$\,s & $\mathbf{0.061}$\,\textbf{s} \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+The consequence is stronger than a search-quality argument. A pipeline that fixes
+bandwidth at $900$\,GB/s before precision is considered can only ever reach the
+left column, so its best attainable answer is $0.216$\,s. The $0.061$\,s cell is
+not merely missed by a weak search; it is \emph{unreachable}, because by the time
+precision is being chosen the bandwidth has already become a constant.
+
+\paragraph{What it costs.}
+Reading the row once more, $s^W \times u$ is a product of two decision variables.
+It is bilinear and therefore nonconvex, which is exactly why the formulation
+carries a McCormick envelope at that position, and why $u$ requires the rotated
+cone $\mathrm{BW_{eff}}\,u \ge \mathrm{BW_{ref}}$. The multiplicative gain in
+\cref{tab:worked_example} and the solver machinery of \cref{sec:solver_vm} are
+the same fact viewed from opposite sides: expressiveness bought with
+nonconvexity, and nonconvexity paid for with envelopes, cones, and a solver that
+tolerates the resulting conditioning.
+
+This is not a hypothetical. It is the structure that produced the reported
+design, which buys $3200$\,GB/s, the most the pin-count row permits, and selects
+W4 with a $4$-bit KV cache: both halves of the bottom-right cell.

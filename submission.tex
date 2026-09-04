@@ -1,0 +1,394 @@
+
+
+
+
+\documentclass{article}
+\usepackage{amsthm}
+\newtheorem*{remark}{Remark}
+\usepackage{amsmath}
+\usepackage{geometry}
+\usepackage{booktabs}
+\usepackage{array}
+\renewcommand{\mnote}[1]{\textcolor{blue}{\textbf{[Note: #1]}}}
+
+% if you need to pass options to natbib, use, e.g.:
+%     \PassOptionsToPackage{numbers, compress}{natbib}
+% before loading neurips_2026
+
+% The authors should use one of these tracks.
+% Before accepting by the NeurIPS conference, select one of the options below.
+% 0. "default" for submission
+ % \usepackage{neurips_2026}
+% the "default" option is equal to the "main" option, which is used for the Main Track with double-blind reviewing.
+% 1. "main" option is used for the Main Track
+%  \usepackage[main]{neurips_2026}
+% 2. "position" option is used for the Position Paper Track
+%  \usepackage[position]{neurips_2026}
+% 3. "dandb" option is used for the Datasets & Benchmarks Track
+ % \usepackage[dandb]{neurips_2026}
+% 4. "creativeai" option is used for the Creative AI Track
+%  \usepackage[creativeai]{neurips_2026}
+% 5. "sglblindworkshop" option is used for the Workshop with single-blind reviewing
+ % \usepackage[sglblindworkshop]{neurips_2026}
+% 6. "dblblindworkshop" option is used for the Workshop with double-blind reviewing
+%  \usepackage[dblblindworkshop]{neurips_2026}
+
+% After being accepted, the authors should add "final" behind the track to compile a camera-ready version.
+% 1. Main Track
+ % \usepackage[main, final]{neurips_2026}
+% 2. Position Paper Track
+%  \usepackage[position, final]{neurips_2026}
+% 3. Datasets & Benchmarks Track
+ % \usepackage[dandb, final]{neurips_2026}
+% 4. Creative AI Track
+%  \usepackage[creativeai, final]{neurips_2026}
+% 5. Workshop with single-blind reviewing
+%  \usepackage[sglblindworkshop, final]{neurips_2026}
+% 6. Workshop with double-blind reviewing
+%  \usepackage[dblblindworkshop, final]{neurips_2026}
+% Note. For the workshop paper template, both \title{} and \workshoptitle{} are required, with the former indicating the paper title shown in the title and the latter indicating the workshop title displayed in the footnote.
+% For workshops (5., 6.), the authors should add the name of the workshop, "\workshoptitle" command is used to set the workshop title.
+% \workshoptitle{WORKSHOP TITLE}
+
+% "preprint" option is used for arXiv or other preprint submissions
+ \usepackage[preprint]{neurips_2026}
+
+% to avoid loading the natbib package, add option nonatbib:
+%    \usepackage[nonatbib]{neurips_2026}
+
+\usepackage[utf8]{inputenc} % allow utf-8 input
+\usepackage[T1]{fontenc}    % use 8-bit T1 fonts
+\usepackage{hyperref}       % hyperlinks
+\usepackage{url}            % simple URL typesetting
+\usepackage{booktabs}       % professional-quality tables
+\usepackage{amsfonts}       % blackboard math symbols
+\usepackage{nicefrac}       % compact symbols for 1/2, etc.
+\usepackage{microtype}      % microtypography
+\usepackage{xcolor}         % colors
+
+% Note. For the workshop paper template, both \title{} and \workshoptitle{} are required, with the former indicating the paper title shown in the title and the latter indicating the workshop title displayed in the footnote. 
+\title{Accelerating the Inference Era with AI-Driven, Globally Optimized HW/SW Co-Design}
+
+
+% The \author macro works with any number of authors. There are two commands
+% used to separate the names and addresses of multiple authors: \And and \AND.
+%
+% Using \And between authors leaves it to LaTeX to determine where to break the
+% lines. Using \AND forces a line break at that point. So, if LaTeX puts 3 of 4
+% authors names on the first line, and the last on the second line, try using
+% \AND instead of \And before the third author name.
+
+
+\author{%
+  David S.~Hippocampus\thanks{Use footnote for providing further information
+    about author (webpage, alternative address), \emph{not} for acknowledging
+    funding agencies.} \\
+  Department of Computer Science\\
+  Cranberry-Lemon University\\
+  Pittsburgh, PA 15213 \\
+  \texttt{hippo@cs.cranberry-lemon.edu} \\
+  % examples of more authors
+  % \And
+  % Coauthor \\
+  % Affiliation \\
+  % Address \\
+  % \texttt{email} \\
+  % \AND
+  % Coauthor \\
+  % Affiliation \\
+  % Address \\
+  % \texttt{email} \\
+  % \And
+  % Coauthor \\
+  % Affiliation \\
+  % Address \\
+  % \texttt{email} \\
+  % \And
+  % Coauthor \\
+  % Affiliation \\
+  % Address \\
+  % \texttt{email} \\
+}
+
+
+\begin{document}
+
+
+\maketitle
+
+
+\begin{abstract}
+
+\end{abstract}
+
+\input{1-introduction}
+\input{2-related-work}
+\input{3-methods}
+\input{4-theory}
+\input{5-experiments}
+\input{6-conclusion}
+
+\section{Submission of papers to NeurIPS 2026}
+
+
+
+\begin{itemize}
+    \item Older GPUs had ridgepoints around 5–10 $FLOPs/Byte$. Now accelerators have ridgepoints above 100–200 $FLOPs/Byte$. This means modern chips are computationally rich but starved for data, making them much harder to fully utilize unless we have very high data reuse (like large matrix multiplications).
+    \item Example from FAST paper : EfficientNet on TPU-v3. Depthwise convolutions utilize about 9 out of 128 slots in a 128×128 systolic array = wasteful. FAST finds that a 32×32 systolic array is actually much better for this workload because it fits the problem dimensions better, even though it sounds "smaller." No human engineer would have looked at this combination systematically.
+    \item there is Tension between what LLMs can do and what should be rigorously formulated and calculated in a principled mathematical, way, we want to balance this tension to get the best of both worlds
+
+\end{itemize}
+
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+
+\appendix
+
+\section{Technical appendices and supplementary material}
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+
+\section{LP Matrix Structure Analysis}
+
+
+\begin{table}[h]
+\centering
+\begin{tabular}{lll}
+\toprule
+\textbf{Feature} & \textbf{Depends On} \\
+\midrule
+$m, n$ (rows, cols) & $L$ (layer count), $C$ (Pareto count), $T$ (timesteps) \\
+$\text{nnz}$ (number of nonzeros) & LP formulation structure \\
+Sparsity pattern & Constraint topology \\
+Block structure & LP variable grouping \\
+eq/ineq ratio & Constraint types \\
+Numerical values in $A, c, l_c, u_c$ & Timeloop cycle counts ($T_{\max}$, $t_W$, etc.)\\
+\bottomrule
+\end{tabular}
+\caption{LP matrix dependence and what changes with Vizier per hardware reference data.}
+\end{table}
+
+
+Only the numerical coefficients change but the matrix shape is identical across the same method:
+\begin{itemize}
+    \item $A_{\text{data}}$ values change (rescaled by BW (bandwidth), GLB (global buffer), etc.)
+    \item $c$ values change (objective weights)
+    \item $l_c$, $u_c$ values change (constraint bounds)
+    \item $A_{\text{indices}}$, $A_{\text{shape}}$ stay identical
+\end{itemize}
+
+\subsection{Formulation Structure for 3 Methods: original static, v0, v1}
+
+\paragraph{Static FAST ILP.}
+For each NN model the sparsity pattern is fixed:
+\begin{itemize}
+    \item $4L$ variables: $\bigl[T_i\ (L),\ p^I\ (L),\ p^O\ (L),\ p^W\ (L)\bigr]$
+    \item ${\sim}3L$ constraints with $L{+}1$ nonzeros per row
+    \item Block layout: dense bottom-right ``$T_i$ + pinning'' block
+\end{itemize}
+
+\paragraph{V0 Dynamic LP.}
+Block time indexed structure with remat:
+\begin{itemize}
+    \item $L + 4LT$ variables
+    \item $L \times T$ constraint blocks repeating (memory capacity per
+          timestep, persistence per timestep, weight monotone, remat)
+    \item The block-banded structure is identical per model across all
+          hardware proposals and only coefficient magnitudes change with HW
+\end{itemize}
+
+\paragraph{V1 Joint Tiling LP.}
+McCormick envelope bilinear matrix structure:
+\begin{itemize}
+    \item $L + LC + ET + LT + LT + 3LC$ variables
+    \item Four distinct constraint blocks:
+          assignment, McCormick linearization, capacity, persistence
+    \item $C = 10$ Pareto configs always (set by \texttt{C\_PARETO} constant)
+    \item Same sparsity pattern per model
+\end{itemize}
+
+\subsection{Implications for Preconditioner Design}
+
+Three preconditioners can be designed (one per formulation category)
+based on the current matrices.
+They will generalize to any hardware reference data, and should generalize for any NN model as well:
+
+\begin{enumerate}
+    \item \textbf{Static preconditioner} — designed for the dense
+          $L \times L$ pinning block; scales with $L$ across all 13 model
+          sizes.
+
+    \item \textbf{V0 preconditioner} — designed for the $L \times T$
+          block-banded structure; works regardless of which hardware Vizier
+          proposes, since block sizes and locations are invariant to HW
+          coefficients.
+
+    \item \textbf{V1 preconditioner} — designed for the McCormick envelope
+          between the $y_{i,c}$, $p_{e,t}$, and $w_{i,c,k}$ blocks;
+          structurally invariant per model.
+\end{enumerate}
+
+The only things that change across models within the same category are
+$L$, $C$, and $T$: but these scale the existing block pattern without
+changing its topology.
+The preconditioner can therefore be made \emph{parametric} in $(L, C, T)$
+rather than hardcoded, and will generalize across all 13 models and any
+future Vizier-proposed hardware configurations.
+
+\begin{remark}
+    Changing \texttt{C\_PARETO} (currently $C = 10$) will alter the V1
+    variable count and break preconditioner reuse.
+    Specifically, the McCormick block dimensions scale as $L \times C \times 3$,
+    so bumping to $C = 20$ or $C = 50$ shifts the V1 matrix structure.
+    Keep \texttt{C\_PARETO} constant if preconditioner portability across
+    hardware proposals is required. Unless CORGI is robust enough at point of submission, then we can look at increasing C. 
+\end{remark}
+
+\begin{table}[h!]
+\centering
+\begin{tabular}{>{\ttfamily}l p{8cm}}
+\toprule
+\normalfont\textbf{Parameter} & \textbf{Description} \\
+\midrule
+PEs\_x\_dim, PEs\_y\_dim        & How many PEs in the grid (4$\times$4? 8$\times$8? 64$\times$64?) \\[4pt]
+systolic\_array\_x/y            & How big is each PE's systolic array \\[4pt]
+vector\_unit\_multiplier        & How wide is the vector unit in each PE \\[4pt]
+L1\_buffer\_config              & Does each PE get its own L1, or share one? \\[4pt]
+L1\_input/weight/output\_size   & How big is L1 memory \\[4pt]
+L2\_buffer\_config              & Does L2 exist at all? \\[4pt]
+L3\_global\_buffer\_size        & How big is the on-chip global buffer \\[4pt]
+GDDR6\_channels                 & How many wires connect to off-chip DRAM \\[4pt]
+native\_batch\_size             & How many inputs processed simultaneously \\
+\bottomrule
+\end{tabular}
+\caption{Hardware design space parameters}
+\end{table}
+
+\bigskip
+
+Each combination of these numbers describes a completely different physical chip.
+A chip with 64 PEs each containing a $32 \times 32$ systolic array looks and behaves
+completely differently from a chip with 8 PEs each containing a $128 \times 128$
+systolic array, even if their raw TFLOPS numbers are similar on paper. What we actually use: MAC range: 256 (Edge TPU) - 1M (H100-class)
+BW range: 64–512 GB/s, with roofline coupling for V1
+CGM range: 1–16 MB, floored per-model for feasibility
+Quadratic TDP penalty above TPU-v3 MACs rules out oversized chips
+Roofline cap in V1 rescaling rules out "tiny chip + huge BW" cheat code
+
+\mnote{Where V1 shows its strength the most. Listed from most impact to least impact: } Architectures have very diverse layer types with different memory-compute tradeoffs, where choosing the right tile size per operation unlocks fusion that a fixed tiling can't.
+
+- MobileNetV3 / MobileNetV4 (Google, 2019/2024)
+
+Same depthwise-separable + squeeze-excite structure as EfficientNet but with h-swish activations and neural architecture search (NAS) blocks. Depthwise layers have tiny weights but huge activations, pointwise layers are the opposite. Fixed tiling can't serve both.
+Very popular for on-device inference (phones, edge TPUs)
+
+- EfficientViT / EfficientFormer (MIT/Snap, 2023)
+
+Hybrid CNN-transformer: depthwise convolutions + linear attention. Two fundamentally different layer types in the same model — depthwise (memory-bound, low OpInt) and attention matmuls (compute-bound at long sequences). V1 can pick different tiles for conv blocks vs attention blocks. Static/V0 can't.
+
+
+- ConvNeXt V2 (Meta, 2023)
+
+Modernized ResNet with depthwise 7×7 convolutions + LayerNorm + GELU
+Large kernel depthwise creates huge activation working sets (7×7 vs 3×3). V1's per-op tiling handles the large-kernel layers better than a global tile choice.
+
+- Mixtral / Mixture-of-Experts (MoE) (Mistral, 2024)
+
+Each token routes to 2 of 8 expert FFN blocks, creating variable per-layer memory footprint
+At inference, only 2 experts are active but all 8 sets of weights must be accessible
+V1 can tile the active experts differently from the routing/attention layers. V0's remat also helps here: evict inactive expert weights, remat if re-activated
+
+- Mamba / State Space Models (Gu and Dao, 2024)
+
+No attention — uses selective scan (sequential recurrence) instead. Very different compute pattern: scan operations are sequential (low parallelism), projections are standard matmuls (high parallelism). V1 can select tiling that maximizes GLB utilization during the sequential scan phases while using aggressive tiling during projections. Growing in popularity as attention-free alternative
+Stable Diffusion / U-Net backbone (Stability AI, 2022-2024)
+
+- Llama 3.1 / Qwen2 / DeepSeek-V3 (GQA + SwiGLU)
+
+You already have Llama, but newer variants have larger FFN ratios (DeepSeek-V3: FFN dim = 18,432 for 7B params)
+Larger FFN → bigger weight matrices → more memory pressure → V1's tiling helps more
+
+- Vision Transformers (ViT, DINOv2)
+
+Patch embedding (conv) + transformer blocks
+Less diverse than EfficientNet but V1 still helps at high resolution (large activation tensors)
+Why these architectures specifically
+The pattern is: V1 gains are largest when the model has Mixed layer types (depthwise + pointwise + attention + scan) — one tile size can't serve all
+Large activation-to-weight ratio — forces fusion/eviction decisions
+Skip connections or multi-fanout — tensors must stay alive across multiple consumers
+Memory-bound operational intensity (OpInt < 100 FLOPS/B) — DRAM traffic dominates, fusion is the primary optimization lever
+
+
+\mnote{When v0 shows its strength the most:Memory pressure is tight, dependency chains are long, per-layer costs change dramatically.}
+
+- DeepSeek-V3 (671B, MoE) at batch=1
+
+256 experts × FFN, only 2 active per token → active weight count changes per step
+V0's time-indexed placement: pin only the active experts each step
+V0's remat: recompute a cheap expert output vs reload 44 GB of expert weights
+Expected V0 gain: 40-60\% vs static
+
+
+- Llama 3.1 / 3.3 405B at 128K context
+
+KV cache at long context exceeds HBM capacity → must evict mid-run
+Remat cheap attention layers vs reload 800 GB weights
+Demonstrates V0's core value: memory pressure over time
+Expected V0 gain: 30-50\% vs static
+
+
+- Mamba-2 / Jamba (hybrid state-space)
+
+Sequential scan creates unique dependency chains
+Scan state is evict-then-remat ideal
+Very different from transformer access pattern — compelling novelty
+Expected V0 gain: 25-40%
+
+- Qwen2.5-72B / DeepSeek-R1 at inference
+
+Long-context reasoning models with massive KV caches
+Remat dominates: recomputing tokens is cheap, KV reload is expensive
+Expected V0 gain: 20-35\%
+Tier 1 — Maximum V1 (joint tiling + fusion) gains
+
+\mnote{V1 wins when: layer types are diverse, working-set sizes vary by 100×+, fusion requires tile flexibility.}
+
+- Flux.1 / Stable Diffusion 3.5 (diffusion transformer)
+
+Mixed CNN backbone + multi-resolution transformer + cross-attention
+U-Net skip connections → tensor lifetime spans entire network (V1's edge-indexed $p_{e,t}$ shines)
+20-50 denoising steps per image → fusion across steps
+Expected V1 gain: 30-50\% vs V0
+Commercially relevant: image generation dominates GPU hours at OpenAI/Google
+
+
+- DeepSeek-V3 MoE (also V1 winner)
+
+Router + attention + 256 experts all want different tiles
+V1's $y_{i,c}$ tiling selection is mathematically natural for MoE's "which expert" routing
+Novel angle: joint tiling + joint expert selection
+Expected V1 gain: 30-45% vs V0
+Segment Anything Model 2 (SAM 2) (image encoder + lightweight decoder)
+
+Extreme layer diversity: huge ViT encoder (~ViT-Huge) + tiny mask decoder (~3 layers)
+No single tile size fits both
+Expected V1 gain: 40-60\% vs V0
+
+
+- EfficientViT / FastViT / MobileNetV4 (hybrid CNN-transformer at edge)
+
+Depthwise conv + linear attention + SE blocks + FFN in one model
+Tile sizes differ by 100× between layers
+Expected V1 gain: 25-40%
+Edge-relevant: showcases V1 for mobile/embedded accelerators
+RWKV v6 / v7 (linear transformer alternative)
+
+Mixed matrix shapes, time-mixing vs channel-mixing layers
+Compelling because it's an attention alternative gaining traction
+Expected V1 gain: 20-35\%
+\newpage
+%\input{checklist.tex}
+\mnote{Key insight of V1 is  the pareto front shape is bandwidth invariant:} precompute Pareto configs once, rescale per trial, therefore we can pull the time intensive Timeloop out of the entire loop
+
+
+\end{document}

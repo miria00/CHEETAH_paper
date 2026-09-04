@@ -1,0 +1,150 @@
+% ===========================================================================
+%  comparison_matrix.tex  --  capability comparison matrix for CHEETAH
+%  Self-contained \subsection fragment. \input this where the matrix is wanted
+%  (e.g. inside Related Work, Sec.~\ref{sec:related}, or the appendix).
+%
+%  Requires (all standard, already loaded by neurips_2026.sty / the preamble):
+%    amssymb  (\checkmark)   xcolor   graphicx (\rotatebox)   booktabs
+%  Citations: reuses ref.bib keys {timeloop, mei2021zigzag,
+%    huang2021cosaschedulingconstrainedoptimization, Tuli_2023, zhang_fast}
+%    and adds {mei2023defines, hong2023dosa, cai2024gemini,
+%    andrulis2026fusiest} from update/newrefs_matrix.bib.
+% ===========================================================================
+
+% --- capability marks (guarded so they never clash with the main preamble) ---
+\providecommand{\cmark}{\textcolor{cmgood}{\ensuremath{\checkmark}}}      % supported
+\providecommand{\xmark}{\textcolor{cmbad}{\ensuremath{\times}}}           % not modeled
+\providecommand{\pmark}{\textcolor{cmpart}{\ensuremath{\circ}}}           % partial / restricted
+\definecolor{cmgood}{RGB}{20,120,50}
+\definecolor{cmbad}{RGB}{190,40,40}
+\definecolor{cmpart}{RGB}{200,130,0}
+% rotated, top-aligned multi-line column header
+\providecommand{\rot}[1]{\rotatebox{90}{\parbox{2.75cm}{\raggedright #1}}}
+% partial mark carrying a note letter, e.g. \pnote{a}
+\providecommand{\pnote}[1]{\pmark\textsuperscript{\,#1}}
+\providecommand{\cnote}[1]{\cmark\textsuperscript{\,#1}}
+
+\subsection{Capability comparison with prior co-design and mapping systems}
+\label{sec:capability-matrix}
+
+Table~\ref{tab:capability-matrix} positions CHEETAH against ten prior
+accelerator co-design, mapping, and compilation systems along the decision decisions that a
+joint co-design formulation can expose. Each cell is filled from the
+system's own paper, and marked conservatively: \cmark~for a decision the system
+searches or optimizes, \pmark~for one it supports only in a restricted or
+staged form, and \xmark~for one it does not model.
+
+\begin{table*}[t]
+\centering
+\caption{Capability matrix over prior accelerator co-design, mapping, and
+compilation systems. Columns are grouped into the schedule decisions a joint
+program can expose, the search it performs, and the guarantee it provides.
+\cmark~= searched/optimized, \pmark~= partial or restricted (see notes),
+\xmark~= not modeled. CHEETAH carries every decision except execution order, which
+it takes as input (note f).
+Systems: Timeloop~\citep{timeloop}, CoSA~\citep{huang2021cosaschedulingconstrainedoptimization},
+DeFiNES~\citep{mei2023defines}, Fast-and-Fusiest~\citep{andrulis2026fusiest},
+ZigZag~\citep{mei2021zigzag}, DOSA~\citep{hong2023dosa}, Gemini~\citep{cai2024gemini},
+CODEBench~\citep{Tuli_2023}, FAST~\citep{zhang_fast},
+Polyhedral compilers (Pluto, Tiramisu)~\citep{bondhugula2008pluto,baghdadi2019tiramisu}.}
+\label{tab:capability-matrix}
+\scriptsize
+\setlength{\tabcolsep}{3.2pt}
+\renewcommand{\arraystretch}{1.22}
+\definecolor{bandsched}{RGB}{230,239,253}
+\definecolor{bandsearch}{RGB}{230,245,233}
+\definecolor{bandguar}{RGB}{253,234,234}
+\definecolor{rowalt}{gray}{0.955}
+\definecolor{rowours}{gray}{0.875}
+\providecommand{\hdr}[1]{\begin{tabular}[b]{@{}c@{}}#1\end{tabular}}
+\providecommand{\famrow}[1]{\multicolumn{10}{@{}l}{\textit{#1}}}
+\begin{tabular}{@{}l ccccc cc cc@{}}
+\toprule
+ & \multicolumn{5}{c}{\cellcolor{bandsched}\textbf{Schedule decisions}}
+ & \multicolumn{2}{c}{\cellcolor{bandsearch}\textbf{Search}}
+ & \multicolumn{2}{c}{\cellcolor{bandguar}\textbf{Guarantee}} \\
+\cmidrule(lr){2-6}\cmidrule(lr){7-8}\cmidrule(lr){9-10}
+\textbf{System}
+ & \hdr{Per-op\\tiling} & \hdr{Operator\\fusion} & \hdr{Time-indexed\\placement} & \hdr{Remateri-\\alization} & \hdr{Exec.\ order\\as variable}
+ & \hdr{Dataflow /\\mapping} & \hdr{Hardware\\sizing}
+ & \hdr{Certified\\bound} & \hdr{Single joint\\program} \\
+\midrule
+\famrow{Per-op mappers} \\
+Timeloop            & \cmark & \xmark & \xmark & \xmark & \xmark & \cmark & \xmark & \xmark & \xmark \\
+\rowcolor{rowalt}
+CoSA                & \cmark & \xmark & \xmark & \xmark & \xmark & \cmark & \xmark & \pnote{a} & \xmark \\
+\famrow{Fusion-aware mappers} \\
+DeFiNES             & \cmark & \cmark & \pnote{b} & \xmark & \xmark & \cmark & \xmark & \xmark & \xmark \\
+\rowcolor{rowalt}
+Fast-and-Fusiest    & \cmark & \cmark & \pnote{b} & \xmark & \xmark & \cmark & \xmark & \pnote{a} & \xmark \\
+\famrow{Hardware design-space exploration} \\
+ZigZag              & \cmark & \xmark & \xmark & \xmark & \xmark & \cmark & \cmark & \xmark & \pnote{c} \\
+\rowcolor{rowalt}
+DOSA                & \cmark & \xmark & \xmark & \xmark & \xmark & \cmark & \cmark & \xmark & \cnote{d} \\
+Gemini              & \cmark & \xmark & \xmark & \xmark & \xmark & \cmark & \cmark & \xmark & \pnote{c} \\
+\rowcolor{rowalt}
+CODEBench           & \pnote{e} & \xmark & \xmark & \xmark & \xmark & \xmark & \cmark & \xmark & \pnote{c} \\
+FAST                & \cmark & \cmark & \pnote{b} & \xmark & \xmark & \cmark & \cmark & \xmark & \xmark \\
+\famrow{Loop compilers} \\
+Polyhedral (Pluto, Tiramisu) & \cmark & \cmark & \xmark & \xmark & \cmark & \xmark & \xmark & \xmark & \pnote{g} \\
+\midrule
+\rowcolor{rowours}
+\textbf{CHEETAH (ours)} & \cmark & \cmark & \cmark & \cmark & \pnote{f} & \cmark & \cmark & \cmark & \cmark \\
+\bottomrule
+\end{tabular}
+
+\vspace{2pt}
+{\footnotesize\raggedright
+\textbf{Notes.}
+\textsuperscript{a}~Optimal only within a restricted subspace
+(CoSA: a per-layer tiling MIP; Fast-and-Fusiest: an optimal mapping within a
+fused mapspace at fixed hardware), not a bound over the joint
+hardware\,+\,schedule problem.
+\textsuperscript{b}~Static or fusion-induced residency only (FAST pins
+tensors in Global Memory over consecutively-executed operators, and
+DeFiNES\,/\,Fast-and-Fusiest hold intermediates on-chip within a fused
+group), but eviction timing is not an independent, time-indexed decision
+variable.
+\textsuperscript{c}~Joint over its own space via staged or surrogate search
+(ZigZag design-space exploration; Gemini simulated annealing; CODEBench
+active learning) rather than a single mathematical program.
+\textsuperscript{d}~DOSA co-optimizes hardware and mapping in one
+differentiable ``one-loop'' search, but returns a local optimum with no
+certificate.
+\textsuperscript{e}~CODEBench sizes accelerator resources (PEs, buffers)
+under a fixed output-stationary dataflow; tiling is not an explicit search
+variable and dataflow is not searched.
+\textsuperscript{f}~The topological execution order is an input to the
+LP, not a decision variable; time-indexed residency, eviction, and
+rematerialization are optimized exactly for any given order, and order
+search is a decision above the LP (Section~\ref{sec:related}).
+\textsuperscript{g}~Affine scheduling is itself a linear or integer program
+(Feautrier; Pluto), but over loop transformations for fixed hardware, with no
+residency, eviction, rematerialization, or hardware variables.
+\par}
+\end{table*}
+
+Read down the columns, prior systems each own a slice of the problem. Per-op
+mappers (Timeloop, ZigZag, CoSA) search tilings but hold nothing across layers;
+CoSA is a per-layer tiling MIP whose optimality certificate is confined to that
+per-layer subspace. Fusion-aware systems (DeFiNES, Fast-and-Fusiest) add
+cross-layer fusion, and the Fast-and-Fusiest mapper is provably optimal over a
+comprehensive fused mapspace, but only for fixed hardware, with no hardware
+co-search, no rematerialization, and no time-indexed eviction. The co-design
+systems (DOSA, Gemini, CODEBench, FAST) reach the hardware knobs, yet each drops
+a scheduling decision: DOSA and Gemini do not model operator fusion; CODEBench
+cannot search dataflow at all, fixing an output-stationary mapping; and FAST
+runs as a sequential pipeline (Vizier\,$\to$\,Timeloop\,$\to$\,fusion ILP) that
+takes the per-operator execution order $o(i)$ as fixed input from Timeloop and
+returns a heuristic Perf/TDP with no certificate. Crucially, \emph{none} of the
+ten carries a certified schedule-quality bound over the joint space: the
+subspace guarantees of CoSA and Fast-and-Fusiest do not bound the joint
+hardware\,+\,tiling\,+\,fusion\,+\,placement problem, and the remaining systems
+are heuristic or local. CHEETAH is the only system that unifies all of these
+decisions (per-op tiling, fusion, time-indexed placement and eviction,
+rematerialization, dataflow search, and hardware sizing; execution order is
+the one decision it takes as input) in a
+single joint program whose LP relaxation is a certified lower bound on latency
+(tight to the exact integral optimum on chain-structured workloads). It is, by
+this accounting, the most comprehensive formulation of the accelerator
+co-design problem to date.

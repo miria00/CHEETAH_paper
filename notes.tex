@@ -1,0 +1,40 @@
+- vizier games floor/have to hand manage, LLM solves this
+- vizier searches 4x4, rely on trials for it to eventually learn that this is not possible, wastes days, LLM solves this
+- LLM can run pareto\_refinement.py as a tool in loop
+- discrete landscape x bayesian search 
+- LLMs resolves LP's relaxation vs rounding risk
+- train LLM on configs and logs of Vizier-Timeloop runs
+- reduce trials but get better results
+Gains = time, performance, unlocks scale
+- reduce from 30 days + into 6-8 hours on v1 
+- add seeds? variance? ICML reviewer guy wanted this
+
+- space of v1 richer than v0, which is richer than static: each becomes a special case of the upper formulation 
+- v1's key insight = time invariant 
+- re write to take out fast, frame as just what we are doing in start 
+- statics's solution/feasible region = subset of v0 solution space = subset of v1 solution space
+- V0 ≤ Static check fails (✗) on the large models (llama1\_65b, deepseek\_v3) because Static LP is infeasible for those workloads — the FAST paper's static ILP can't even build a valid solution for 720+ layer transformers. This is a known limitation of the static formulation
+- dominance property holds
+- he FAST paper's static formulation can't fit 720+ layer transformer weights without weight-drop machinery while V0/V1 have weight-monotone + remat to handle this; Static doesn't)
+- added preflight and earlystop for infeasible static 
+- v0//v1 always pass prefligth due to richer formulations 
+- infeasibel check 10 times in a row, not an accident, terminate
+- by inotrducing richer LP formulations, 
+N=10 consecutive infeasibles then early-stop fires, search exits, marks row EARLY\_STOP\_INFEASIBLE written.
+Preflight at max-resource HW returns infeasible then entire Vizier-timeloop search skipped, single PREFLIGHT\_INFEASIBLE row written. Score 0.0.
+- GP\_UCB\_PE samples things that are too small just to learn that they are too small =  a waste 
+- hen the primal is feasible AND objective is stable for 6×50=300 consecutive iters within 1e-6 relative drift. The objective is trustworthy — it's just that the dual residual is degenerate (common in V1's bilinear McCormick LPs) so strict CONVERGED status is hard to hit.
+- Static has high MAC-floor rejection (62\% of trials). V0 is much healthier (75\% OK rate). Both still on the first model — Vizier needs all 50 trials per (method, model) before moving on.
+- Notable patterns
+All best HW configs prefer BW = 64 GB/s — Vizier consistently chose the lowest BW band, confirming V1's tile flexibility makes it bandwidth-insensitive (TDP penalty for high BW outweighs the perf gain).
+EN-B1 = 30.96× is the highest single-model score; EN-B3, EN-B5, llama3_70b also hit ~30×.
+HARD\_MODELS (llama3_70b, deepseek_v3) prefer smaller MAC counts (131K and 262K) — V1's joint LP picks Pareto configs that fit the giant model's memory footprint best on smaller chips.
+EFFICIENTNETS prefer max MAC count (1M) — V1 gets max compute when memory pressure is low.
+REJECTED rates mostly low (1–4%), but EN-B7 = 10% and HARD_MODELS = 7-9% (Vizier tries low-MAC corners that hit the floor).
+Output artifacts written
+
+- variance across seeds report 
+
+delta between rounding vs no roinding motivates the use of llm
+-This is the architecture for the project. By nesting Vizier inside the LLM-defined Campaign, solved the "Architect vs. Optimizer" bottleneck. Using the LLM for what it’s good at (identifying the physical neighborhood via duals) and Vizier for what it’s good at (precision sampling and boundary-finding). COMbine best of both worlds, what LLMs are good at and what LPs are good at. 
+- "While black-box Bayesian optimizers (Vizier) are excellent at finding feasible boundaries, they lack the structural intuition to recognize why a design fails. By exposing the internal 'pain signals' of the V1 solver to an LLM, we can prune the search space by $90\%+$ before the first sample is even taken."

@@ -1,0 +1,85 @@
+\section{Audits, Solver, and Serving Validation}
+\label{app:socp_provenance}
+
+\emph{This appendix maps the comprehensive program's constraint families to the
+production systems they are drawn from, states which solver solves the resulting
+second-order cone program, and reports a preliminary serving-regime validation on
+DeepSeek-V3. The results here are at the level of the convex relaxation and are
+calibrated on the analytic roofline; a fully rounded, real-Timeloop solve is
+immediate future work.}
+
+\paragraph{What we fold in, and from where.}
+The constraint families of \cref{sec:v3_levers,app:master_v3} are not invented in a
+vacuum: each is a technique from a production serving or kernel system, re-expressed
+as a certified constraint family whose only effect is on bytes moved, FLOPs,
+on-chip residency, or a hardware parameter. \Cref{tab:provenance} lists the mapping,
+together with whether the decision binds on DeepSeek-V3 \emph{serving}.
+
+\begin{table}[h]
+\centering
+\small
+\begin{tabular}{@{}llll@{}}
+\toprule
+Source & Technique & Constraint family / variable & Binds on DeepSeek serving? \\
+\midrule
+TensorRT-LLM & FP8/INT4 precision; kernel fusion & precision one-hot $q$, $s^W,s^{\mathrm{KV}}$; fusion $=$ residency $p$ & \textbf{yes}, largest, $+28.6\%$ \\
+& & \citep{lin2024awq,frantar2023gptq,hooper2024kvquant,dao2022flashattention} & \\
+vLLM & chunked-prefill interleaving; paged KV & interleave $\theta$; KV-budget $B^{\mathrm{KV}}$ \citep{kwon2023vllm} & \textbf{yes}, interleave $+38\%$ tighter \\
+SGLang & RadixAttention prefix reuse & $\eta_{\mathrm{hit}}(C_{\mathrm{cache}})$ \citep{zheng2024sglang} & present; small (little prefix sharing) \\
+ThunderKittens & async overlap; load/compute split; reg-file & $\kappa$; $\mathrm{BW_{eff}}{=}\min(\mathrm{BW},B_{\mathrm{LD}})$; $C_{\mathrm{RF}}$ \citep{spector2024thunderkittens} & present; inert (memory-bound) \\
+StreamingLLM/H2O & KV eviction & KV-budget cap \citep{xiao2024streamingllm,zhang2023h2o} & small \\
+DeepCache & cross-step feature reuse & $\chi_b$ \citep{ma2024deepcache} & inert (no diffusion) \\
+\bottomrule
+\end{tabular}
+\caption{Provenance of the comprehensive program's decisions and whether each binds on
+DeepSeek-V3 serving. Structured $2{:}4$ sparsity (a hardware/software decision rather
+than a single-system technique) is the second-largest, $+15.5\%$.}
+\label{tab:provenance}
+\end{table}
+
+\paragraph{How the mapping works: coefficients as functions of the hardware.}
+The single modelling principle behind the table is that the \emph{only} constants
+are the reference per-tile Pareto bases ($\Tmin(c)$, $\Tmax(c)$, byte footprints);
+every hardware coefficient is written as $\text{base}\times f(\text{decision
+variables})$. Compute time is $\Tmin(c)\,v\,/\big(\eta(\alpha)\,\gamma(\phi)\big)$
+and memory time is (precision-, cache-, and eviction-scaled bytes)$\,\times u$, with
+$v=1/\mathrm{MACs}$ and $u=1/\mathrm{BW_{eff}}$ exact rotated second-order cones.
+The classical per-trial Pareto rescale thus becomes an in-program function of the
+hardware variables rather than a per-chip precompute. Instantiated for DeepSeek-V3
+and shape-aggregated ($903$ operations $\to 13$ unique shapes, \cref{app:shape_agg}),
+the program has ${\sim}11{,}600$ variables, two exact SOC cones, and the McCormick
+envelopes for the genuine bilinears, compact, versus ${\sim}8.7$M rows for the
+naive per-operation build.
+
+\paragraph{Which solver.}
+The program is a second-order cone program, so an LP solver such as HiGHS does not
+apply; it is solved by a conic solver. As \cref{app:socp_conditioning} details, in
+natural units the instance is too ill-conditioned for off-the-shelf conic solvers
+to solve at all; after an exact diagonal unit rescaling, an interior-point conic
+solver (Clarabel) returns an optimal solution in a few seconds per configuration,
+though it remains stiff enough to require a multi-start. For the ill-conditioned
+production instances the intended solver is VM-One-Armed-Rescue
+(\cref{sec:solver_vm}): a restarted primal-dual hybrid gradient method with a
+diagonal variable-metric rescaling, which is designed precisely for the conditioning
+this comprehensive program exhibits.
+
+\paragraph{A preliminary serving validation on DeepSeek-V3.}
+The decisions are memory-regime decisions, so the objective the program is written over
+determines whether they bind. Under a \emph{prefill}-latency objective ($\min\sum_i
+T_i$) the DeepSeek-V3 optimum is compute-bound (it provisions compute to the reticle
+limit), and all of the candidate decisions are inert (they move the objective by less
+than $0.006\%$). Under the \emph{serving}-latency objective
+$\min\,T_{\mathrm{prefill}}+G\cdot T_{\mathrm{decode}}$ (context $4096$, batch $32$,
+$G=512$), where the memory-bound decode phase dominates by construction, the decisions
+activate: W4 weight precision alone reduces serving latency by $28.6\%$ and $2{:}4$
+sparsity by $15.5\%$ (both act on the mixture-of-experts weight reload, which is
+${\sim}98\%$ of decode DRAM traffic), while the full set reduces it by ${\sim}51.5\%$
+,  roughly a $2\times$ software contribution on top of the hardware co-design. The
+compute-side ThunderKittens decisions (overlap, register-file occupancy) remain inert,
+which is correct for a weight-reload-bound workload. We emphasise these are
+preliminary, relaxation-level numbers: three McCormick sub-problems were found to
+leak spurious gains and were tightened (an integer or perspective reformulation is
+the correct fix), after which the load-bearing precision decision is exact
+($s^W_{\mathrm{dec}}=1/2$, i.e.\ unambiguously W4) even though some one-hot
+selectors remain fractional in the relaxation. A fully rounded solve under the
+reconciled real-Timeloop calibration is the immediate next step.

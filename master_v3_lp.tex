@@ -1,0 +1,175 @@
+\begin{landscape}
+\section{The Master CHEETAH-V1 Program: A Comprehensive Reference}
+\label{app:master_v3}
+
+For reference, we collect the complete comprehensive CHEETAH-V1 co-design program
+on a single page. It is one certified optimization over a generic graph
+intermediate representation (a DAG of operations, each carrying a Timeloop-derived
+tile-configuration Pareto set and a roofline, connected by residency edges), with
+the hardware sized \emph{inside} the program and every serving-regime decision folded
+in as a certified constraint family. Once the hardware reciprocals
+$v=1/\mathrm{MACs}$ and $u=1/\mathrm{BW}$ are written as exact rotated
+second-order cones, the program is a \emph{second-order cone program} (SOCP): SOC
+cones for the reciprocals, McCormick envelopes for the genuine bilinears
+($y\,p$, $u\,w$), and linear rows for everything else. Each constraint family is drawn
+from a production serving or kernel system (vLLM, SGLang, ThunderKittens,
+TensorRT-LLM); \Cref{app:socp_provenance} maps each technique to its constraint
+family, names the solver, and reports a preliminary serving-regime validation on
+DeepSeek-V3. Each family is \emph{inert when pinned}, so
+$\eqref{eq:v1}\subseteq\eqref{eq:v1}\subseteq(\text{this program})$.
+
+\begin{center}
+\footnotesize
+\setlength{\arraycolsep}{1.5pt}
+\fbox{%
+\begin{minipage}{0.965\linewidth}
+\centering
+\vspace{2pt}
+\textbf{\normalsize The Comprehensive CHEETAH-V1 Program}\\[2pt]
+\[
+\min\;\; T_{\mathrm{serve}}
+\;+\; \sum_{i,t} c_i^{\mathrm{remat}}\, r_{i,t}
+\;+\; \varepsilon_{\mathrm{CGM}}\sum_{k} k\, h_{\mathrm{GM},k}
+\qquad\text{s.t.}
+\]
+\vspace{-6pt}
+\hrule
+\vspace{4pt}
+%
+\begin{minipage}[t]{0.485\linewidth}
+\underline{\textsc{Selection \& exact coupling}}
+\vspace{-2pt}
+\begin{align*}
+&\textstyle\sum_c y_{i,c}=1,\quad \sum_k h_{\mathrm{GM},k}=1\\[-1pt]
+&w_{i,c,k}=y_{i,c}\,p_{\mathrm{assoc}(i,k),o(i)}\ \text{[McCormick]},\ \ \zeta_{i,c,k}=u\,w_{i,c,k}
+\end{align*}
+\vspace{-8pt}
+
+\underline{\textsc{Disaggregated perspective epigraph (roofline)}}
+\vspace{-2pt}
+\begin{align*}
+&\textstyle\sum_c v_{i,c}=v,\quad \sum_c u_{i,c}=u,\quad \sum_a v^{a}_{i,c}=v_{i,c}\\[-1pt]
+&\tau_{i,c}\ \ge\ \sum_a \frac{\Tmin_i(c)}{\eta_{i,a}}\,v^{a}_{i,c}\Big/\!\textstyle\sum_f \gamma_f\,\phi_{\mathrm{ph},f}\\[-2pt]
+&\tau_{i,c}\ \ge\ \Tmax_i(c)\,u_{i,c}-\textstyle\sum_k t_i^k(c)\,\zeta_{i,c,k},\qquad T_i\ge\textstyle\sum_c\tau_{i,c}
+\end{align*}
+\vspace{-8pt}
+
+\underline{\textsc{Interleaved prefill+decode serving} \citep{kwon2023vllm}}
+\vspace{-2pt}
+\begin{align*}
+&T_{\mathrm{serve}}\ge(\theta\,C^{\mathrm{pre}}+N\,C^{\mathrm{dec}})\,v,\quad
+ T_{\mathrm{serve}}\ge(\theta\,M^{\mathrm{pre}}+N\,M^{\mathrm{dec}})\,u
+\end{align*}
+\vspace{-8pt}
+
+\underline{\textsc{Hardware sizing, the chip inside the LP}}
+\vspace{-2pt}
+\begin{align*}
+&m\,v\ge 1,\quad \beta\,u\ge 1 \quad[\text{exact rotated SOC / tangent cuts}]\\[-1pt]
+&\textstyle\sum_a\alpha_a=1\ \text{(array aspect)},\quad \sum_f\phi_{\mathrm{ph},f}=1\ \text{(DVFS)}\\[-1pt]
+&\mathrm{BW_{eff}}\le\mathrm{BW},\quad \mathrm{BW_{eff}}\le B_{\mathrm{LD}}\ \text{(load engines)} \citep{spector2024thunderkittens}\\[-1pt]
+&\kappa_{\mathrm{MAC}}\mathrm{MACs}+\kappa_{\mathrm{BW}}\mathrm{BW}+\kappa_{\mathrm{LD}}B_{\mathrm{LD}}+\kappa_{\mathrm{SRAM}}C_{\mathrm{GM}}\le A_{\mathrm{cap}}\\[-1pt]
+&\pi_{\mathrm{MAC}}\mathrm{MACs}+\pi_{\mathrm{bit}}\,\varrho_{\mathrm{DRAM}}\le P_{\mathrm{cap}};\quad \text{6 manufacturability gates}
+\end{align*}
+\end{minipage}%
+\hfill
+\vrule
+\hfill
+\begin{minipage}[t]{0.485\linewidth}
+\underline{\textsc{Capacity, residency, rematerialization} \citep{dao2022flashattention}}
+\vspace{-2pt}
+\begin{align*}
+&\textstyle\sum_{e\in\mathcal E_{\mathrm{live}}(t)}\!\sum_c s^{\mathrm{KV}}d^{\mathrm{act}}_{e,c}z^{\mathrm{act}}_{e,c,t}
+ +\sum_{i}\sum_c s^{W}d^{W}_{i,c}z^{W}_{i,c,t}\le\textstyle\sum_k 2^k h_{\mathrm{GM},k}\\[-1pt]
+&p_{e,t}\le p_{e,t-1}+r_{\mathrm{src}(e),t},\qquad r_{i,t}\le\min(p_{e,t},p^W_{i,t})
+\end{align*}
+\vspace{-8pt}
+
+\underline{\textsc{Precision} (per-phase, per-expert) \citep{lin2024awq,frantar2023gptq,hooper2024kvquant}}
+\vspace{-2pt}
+\begin{align*}
+&\textstyle\sum_\rho q_{\phi,\rho}=1,\ \ s^{W}_\phi=\sum_\rho b^W_\rho q_{\phi,\rho},\ \ s^{\mathrm{KV}}_\phi=\sum_\rho b^{\mathrm{KV}}_\rho q_{\phi,\rho}
+\end{align*}
+\vspace{-8pt}
+
+\underline{\textsc{KV budget / eviction $\to$ fit in CGM} \citep{xiao2024streamingllm,zhang2023h2o}}
+\vspace{-2pt}
+\begin{align*}
+&s^{\mathrm{KV}}\,B^{\mathrm{KV}}\,d^{\mathrm{KV}}\le\textstyle\sum_k 2^k h_{\mathrm{GM},k}\quad[\text{KV read served on-chip}]
+\end{align*}
+\vspace{-8pt}
+
+\underline{\textsc{MoE expert residency} (cache / offload)}
+\vspace{-2pt}
+\begin{align*}
+&\textstyle\sum_e g_e\,s^{W}_e W_e\le C_{\mathrm{HBM}},\qquad
+ \Delta^{\mathrm{moe}}=\sum_e f_e(1-g_e)\,s^{W}_e W_e
+\end{align*}
+\vspace{-8pt}
+
+\underline{\textsc{Prefix / KV cache reuse (RadixAttention)} \citep{zheng2024sglang}}
+\vspace{-2pt}
+\begin{align*}
+&\widehat C^{\mathrm{pre}}=(1-\eta_{\mathrm{hit}}(C_{\mathrm{cache}}))\,C^{\mathrm{pre}},\quad
+ \widehat\Delta^{\mathrm{KV}}=(1-\eta_{\mathrm{hit}})\,\Delta^{\mathrm{KV}}
+\end{align*}
+\vspace{-8pt}
+
+\underline{\textsc{Diffusion cross-step reuse (DeepCache)} \citep{ma2024deepcache}}
+\vspace{-2pt}
+\begin{align*}
+&\widehat{\mathrm{cost}}_b=(1-\chi_b(1-\tfrac1W))\,\mathrm{cost}_b,\quad \textstyle\sum_b\chi_b F_b\le\sum_k 2^k h_{\mathrm{GM},k}
+\end{align*}
+\vspace{-8pt}
+
+\underline{\textsc{Domains}}
+\vspace{-2pt}
+\begin{align*}
+&y,p,p^W,r,w,z,h,q,\alpha,\phi,g,\chi\in[0,1];\ \ v,u,B_{\mathrm{LD}},B^{\mathrm{KV}},C_{\mathrm{cache}},C_{\mathrm{HBM}}\ge 0
+\end{align*}
+\end{minipage}
+
+\vspace{3pt}\hrule\vspace{3pt}
+\noindent\underline{\textsc{Candidate extensions}} \emph{(discussed; not yet implemented or validated, recorded here for completeness)}\\[3pt]
+\scriptsize
+\begin{minipage}[t]{0.485\linewidth}
+$\bullet$~\textbf{Structured sparsity (2:4):} $\sum_\ell\sigma_\ell=1$; $s^{\mathrm{spar}}=\sum_\ell(1{-}z_\ell)\sigma_\ell$ scales $d^W$ \emph{and} MACs; sparse-MAC support carries an area cost.\\[2pt]
+$\bullet$~\textbf{Compute--memory overlap $\kappa$} (async copy / TMA): $\tau_{i,c}\ge\max(\cdot,\cdot)-\kappa\min(\cdot,\cdot)$, $0\le\kappa\le\kappa_{\max}$, gated by an async-DMA-engine area term.\\[2pt]
+$\bullet$~\textbf{Register-file / SMEM $C_{\mathrm{RF}}$ + occupancy:} tile $\le C_{\mathrm{RF}}$; occupancy $O=g(\mathrm{tile},C_{\mathrm{RF}})$; DRAM latency hidden iff $O\ge O_{\min}$ (tile$\leftrightarrow$latency-hiding trade-off, distinct from CGM).\\[2pt]
+$\bullet$~\textbf{Explicit U-shape skip residency:} include skip/concat edges $e\in\mathcal E_{\mathrm{skip}}$ in $p_{e,t}$ and capacity, so down-path features persist for up-path consumers.
+\end{minipage}%
+\hfill
+\begin{minipage}[t]{0.485\linewidth}
+$\bullet$~\textbf{Tiered KV residency:} hot recent $B_{\mathrm{hot}}$ on-chip ($B_{\mathrm{hot}}s^{\mathrm{KV}}d^{\mathrm{KV}}\le C_{\mathrm{GM}}$), cold $(B^{\mathrm{KV}}{-}B_{\mathrm{hot}})$ streamed from HBM.\\[2pt]
+$\bullet$~\textbf{Winograd / transform support:} per-$3{\times}3$-conv one-hot $\omega_i$; MACs $\times(1-\omega_i(1-r_{\mathrm{Wino}}))$; transform-unit area cost.\\[2pt]
+$\bullet$~\textbf{Memory-technology selector:} one-hot over $\{$HBM, LPDDR, $\dots\}$, each fixing $(\kappa_{\mathrm{BW}},\pi_{\mathrm{bit}},\overline{\mathrm{BW}})$, trades bandwidth against energy.\\[2pt]
+$\bullet$~\textbf{Scalability:} the program is solved by \emph{shape aggregation} (\cref{app:shape_agg}): build over $S$ unique op-shapes with multiplicities, not $N$ operations, for a ${\sim}100\times$ size reduction.
+\end{minipage}
+\footnotesize
+\vspace{2pt}
+\end{minipage}}
+\end{center}
+
+\vspace{4pt}
+\noindent\small
+Every constraint family reduces to a change in bytes moved, FLOPs, on-chip
+residency, or a hardware parameter, hence a linear, McCormick-, or second-order-cone
+representable addition rather than an outer-loop guess. Fusion and on-chip tiling
+realize FlashAttention-style IO-awareness \citep{dao2022flashattention}; the
+interleaved objective and RadixAttention/paged prefix reuse come from vLLM and
+SGLang \citep{kwon2023vllm,zheng2024sglang}; the load-engine vs.\ compute-worker
+datapath split and native-MMA-tile utilization come from tile kernels
+\citep{spector2024thunderkittens}; precision is bounded by an accuracy-vetted menu
+\citep{lin2024awq,frantar2023gptq,hooper2024kvquant}; KV eviction follows
+\citep{xiao2024streamingllm,zhang2023h2o}; and diffusion cross-step reuse follows
+DeepCache \citep{ma2024deepcache}. Accuracy is never linearized; it is bounded by
+the cited menu. Quantities that only rescale coefficients (the decode batch $N$,
+the speculative-decode width $K$) enter as workload parameters, and genuinely
+discrete or non-convex axes (interconnect radix, HBM-stack count, array aspect,
+low-bit MAC-unit support, draft model, denoising-step schedule) remain columns the
+LLM-Architect outer loop proposes and the LP scores by reduced cost against its
+converged duals $\lambda_{\mathrm{BW}},\lambda_{\mathrm{MAC}},\lambda_{\mathrm{HBM}},
+\lambda_{\mathrm{CGM}},\lambda_{\mathrm{LD}},\lambda_{\mathrm{cache}}$. Every added
+block is inert when pinned, so the program subsumes the entire V0 and V1 hierarchy.
+
+\end{landscape}

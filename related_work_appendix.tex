@@ -1,0 +1,187 @@
+% \section{More on Related Work}\label{related_work_appendix}
+% Since this work is at the intersection of various subfields, we review each field's related work individually below.
+% \paragraph{Accelerator design space exploration.}
+% Hardware ML accelerators are characterized by their datapath (compute units, memory hierarchy, interconnect) and software schedule (how operations map onto hardware).
+% A substantial body of work explores design spaces of accelerator families by mutating datapath hyperparameters and operation mappings.
+% % Eyeriss
+% \citep{chen2019eyerissv2flexibleaccelerator} introduced Eyeriss, a spatial architecture with a row-stationary dataflow for energy-efficient CNNs.
+% % Timeloop
+% \citep{timeloop} proposed Timeloop, a systematic infrastructure for evaluating DNN accelerator schedules and datapaths.
+% % MAESTRO
+% \citep{kwon2020understandingreuseperformancehardware} developed MAESTRO, a data-centric framework for understanding DNN mapping performance.
+% % Interstellar
+% \citep{yang_interstellar} used Halide's scheduling language to analyze DNN accelerators in Interstellar.
+% % dMazeRunner
+% \citep{dave2019dmazerunner} optimized convolution mappings on dataflow accelerators with dMazeRunner. 
+% % MAGNet
+% \citep{venkatesan2019magnet} proposed MAGNet, a modular accelerator generator, reporting up to 1.75$\times$ Perf/W improvement.
+% % Apollo
+% \citep{yazdanbakhsh2021apollotransferablearchitectureexploration} explored transferable architecture exploration via Apollo.
+% % ConfuciuX
+% \citep{kao2020confuciuxautonomoushardwareresource} applied reinforcement learning to hardware resource assignment.
+% % CoSA
+% Huang \etal~formulated accelerator mapping as a constrained optimization problem in CoSA \citep{huang2021cosaschedulingconstrainedoptimization}.
+% FAST extended these approaches by jointly optimizing datapath, schedule, and compiler passes including operation fusion, achieving $3.7\times$ average Perf/TDP improvement over TPU-v3 across vision and language workloads.
+% Our work preserves FAST's outer hardware search loop but replaces the sequential inner optimization with a joint linear program.
+
+% \paragraph{FAST Breakdown.} FAST presents a tractable full-stack optimization technique for co-design of inference accelerators by jointly searching over hardware datapaths, software schedules, and compiler passes.
+% The input to Vizier is a general ML accelerator template (Figure~\ref{fig:pipeline}) consisting of a grid of processing elements (PEs), each containing a systolic array for matrix operations and a vector processing unit (VPU) for non-MAC operations such as softmax and layer normalization.
+% The memory hierarchy includes per-PE L1 scratchpads, optional L2 buffers, a shared Global Memory, and off-chip DRAM.
+% The full hardware configuration is defined by 16 hyperparameters---PE grid dimensions, systolic array sizes, buffer capacities, DRAM channels, and batch size---spanning a datapath search space of $\mathcal O(10^{13})$ \citep[Table~3]{zhang_fast}. 
+
+
+% \paragraph{Operation fusion and memory optimization.}
+% Operation fusion reduces DRAM traffic by keeping intermediate tensors on-chip.
+% Production compilers such as XLA fuse simple patterns, but each fusion region contains at most one matrix operation.
+% FAST introduced an ILP-based fusion technique that pins activation and weight tensors in Global Memory to minimize total execution time, but with a static placement model restricted to consecutively-executed operations.
+% % Rematerialization / checkpointing
+% Rematerialization---recomputing values instead of storing them---is well-studied in the context of training memory optimization.
+% \citep{chen2016trainingdeepnetssublinear} proposed gradient checkpointing to trade compute for memory during backpropagation.
+% \citep{jain2020checkmatebreakingmemorywall} formulated optimal checkpointing as an ILP.
+% Our \textcolor{skyblue}{V0} formulation adapts rematerialization to the inference setting.
+
+% \paragraph{Joint optimization and linearization techniques.}
+% The interaction between tiling decisions and fusion opportunities is a bilinear optimization problem: execution time depends on the product of tiling selection and tensor placement variables.
+% McCormick envelopes provide exact linearization of bilinear terms over box-constrained domains by introducing auxiliary variables and four linear constraints per product term.
+% The foundational work by McCormick established convex underestimators for factorable nonconvex programs \citep{mccormick1976computability}.
+% % % McCormick 1976
+% % (McCormick, ``Computability of Global Solutions to Factorable Nonconvex Programs,'' \textit{Mathematical Programming}, 1976).
+% Our \textcolor{skyblue}{V1} formulation applies McCormick linearization to the tiling $\times$ placement interaction, enabling exact reformulation as a LP.
+% % PDLP
+% \citep{applegate2022practicallargescalelinearprogramming} developed PDLP, a practical first-order method for large-scale LP solving that scales to instances with billions of nonzeros, based on which we build our variant of LP solver that empowers solving the system \textcolor{skyblue}{V0} and \textcolor{skyblue}{V1} LPs efficiently.
+
+% % Our LP instances (15--25M nonzeros for EfficientNet-B7) are well within the capacity of such solvers.
+
+% \paragraph{Tiling and loop optimization.}
+% Optimal tiling for nested loop computations has been studied extensively in the compiler community.
+% % Halide
+% \citep{ragan2013halide} introduced Halide, a language for optimizing parallelism and locality in image processing pipelines.
+% % TVM / Ansor
+% \citep{zheng2023ansorgeneratinghighperformancetensor} proposed Ansor, which generates high-performance tensor programs via hierarchical search.
+% % ZigZag
+% Mei \etal~enlarged the joint architecture-mapping design space for DNN accelerators in ZigZag \citep{mei2021zigzag}.
+% These works optimize tiling for fixed hardware; our contribution is to co-optimize tiling with fusion decisions.
+
+% % \paragraph{Neural architecture and hardware co-design.}
+% % Co-optimizing neural network architectures and their target hardware has gained attention.
+% % % MnasNet
+% % Tan \etal~performed platform-aware neural architecture search
+% % (\url{https://arxiv.org/abs/1807.11626}).
+% % % Once-for-All
+% % Cai \etal~proposed Once-for-All networks that decouple training from deployment
+% % (\url{https://arxiv.org/abs/1908.09791}).
+% % % Hardware-aware NAS
+% % Zhou \etal~rethought co-design of neural architectures and hardware accelerators
+% % (\url{https://arxiv.org/abs/2102.08619}).
+% % While our framework does not modify the neural network architecture, the joint LP formulation could naturally extend to include architecture decisions as additional variables.
+
+% \paragraph{LLM-guided optimization and scientific discovery.}
+% Recent work has demonstrated that large language models can serve as effective mutation operators in evolutionary search.
+% % FunSearch
+% Romera-Paredes \etal~introduced FunSearch, pairing a pretrained LLM with an evaluator to discover new solutions to open mathematical problems \citep{romera2024mathematical}.
+% % AlphaEvolve
+% \citep{novikov2025alphaevolvecodingagentscientific} presented AlphaEvolve, an evolutionary coding agent powered by Gemini that discovered improved algorithms for data center scheduling, chip design, and matrix multiplication.
+% % EvoPrompting
+% Chen \etal~proposed EvoPrompting, combining evolutionary search with LLM-based code generation for neural architecture discovery \citep{chen2023evopromptinglanguagemodelscodelevel}.
+% Our LLM-guided hardware search draws on these ideas, using an LLM to propose hardware configurations informed by workload analysis and prior trial outcomes, while the joint LP provides rigorous inner-loop optimization.
+
+% \paragraph{Datacenter accelerator economics.}
+% The economic viability of specialized accelerators depends on deployment scale.
+% % ASIC Clouds
+% \citep{magaki2016asic,xie2018extreme}~analyzed specialization economics under total cost of ownership.
+% % TPUv4i
+% \citep{jouppi2021ten} distilled lessons from three generations of TPU design.
+% FAST provided ROI analysis showing that specialized accelerators can be profitable with deployments of $2,000$--$4,000$ units.
+% Our joint optimization targets the same deployment regime, but achieves better Perf/TDP through the larger effective search space of joint tiling-fusion optimization.
+
+
+
+\section{Extended Related Work}\label{related_work_appendix}
+Since this work is at the intersection of various subfields, we review each field's related work individually below.
+\paragraph{Accelerator design space exploration.}
+Hardware ML accelerators are characterized by their datapath (compute units, memory hierarchy, interconnect) and software schedule (how operations map onto hardware).
+A substantial body of work explores design spaces of accelerator families by mutating datapath hyperparameters and operation mappings.
+% Eyeriss
+\citep{chen2019eyerissv2flexibleaccelerator} introduced Eyeriss, a spatial architecture with a row-stationary dataflow for energy-efficient CNNs.
+% Timeloop
+\citep{timeloop} proposed Timeloop, a systematic infrastructure for evaluating DNN accelerator schedules and datapaths.
+% MAESTRO
+\citep{kwon2020understandingreuseperformancehardware} developed MAESTRO, a data-centric framework for understanding DNN mapping performance.
+% Interstellar
+\citep{yang_interstellar} used Halide's scheduling language to analyze DNN accelerators in Interstellar.
+% dMazeRunner
+\citep{dave2019dmazerunner} optimized convolution mappings on dataflow accelerators with dMazeRunner. 
+% MAGNet
+\citep{venkatesan2019magnet} proposed MAGNet, a modular accelerator generator, reporting up to 1.75$\times$ Perf/W improvement.
+% Apollo
+\citep{yazdanbakhsh2021apollotransferablearchitectureexploration} explored transferable architecture exploration via Apollo.
+% ConfuciuX
+\citep{kao2020confuciuxautonomoushardwareresource} applied reinforcement learning to hardware resource assignment.
+% CoSA
+Huang \etal~formulated accelerator mapping as a constrained optimization problem in CoSA \citep{huang2021cosaschedulingconstrainedoptimization}. 
+\citep{shi2020learnedhardwaresoftwarecodesignneural} cast hardware/software co-design as a constrained Bayesian optimization problem over semi-continuous/semi-discrete design spaces, demonstrating that jointly exploring software stacks and hardware accelerators improves the energy-delay product by up to 40\% over decoupled approaches.  
+\citep{Tuli_2023} proposed CODEBench, a neural architecture and hardware accelerator co-design framework that uses active learning to navigate the joint design space efficiently. \citep{peng2024chipletcloudbuildingai} introduced Chiplet Cloud, a system-level co-exploration framework for serving large generative language models that jointly searches hardware architecture and software mapping strategies. 
+Theseus \citep{zhu2024theseusexploringefficientwaferscale} explored efficient wafer-scale chip design for LLMs using multi-fidelity Bayesian optimization to navigate the enormous design space of wafer-scale chips under fabrication-specific constraints. 
+HASCO \citep{xiao2021hasco} utilizes tensor syntax trees and proposes a multi-objective Bayesian optimization algorithm, and UNICO \citep{rashidi2023unico} introduces a robustness metric for better co-design generalization.
+FAST extended these approaches by jointly optimizing datapath, schedule, and compiler passes including operation fusion, achieving $3.7\times$ average Perf/TDP improvement over TPU-v3 across vision and language workloads.
+Our work preserves FAST's outer hardware search loop but replaces the sequential inner optimization with a joint linear program.
+
+\paragraph{FAST breakdown.} FAST presents a tractable full-stack optimization technique for co-design of inference accelerators by jointly searching over hardware datapaths, software schedules, and compiler passes.
+The input to Vizier is a general ML accelerator template (Figure~\ref{fig:pipeline}) consisting of a grid of processing elements (PEs), each containing a systolic array for matrix operations and a vector processing unit (VPU) for non-MAC operations such as softmax and layer normalization.
+The memory hierarchy includes per-PE L1 scratchpads, optional L2 buffers, a shared Global Memory, and off-chip DRAM.
+The full hardware configuration is defined by 16 hyperparameters (PE grid dimensions, systolic array sizes, buffer capacities, DRAM channels, and batch size) spanning a datapath search space of $\mathcal O(10^{13})$ \citep[Table~3]{zhang_fast}. 
+
+
+\paragraph{Operation fusion and memory optimization.}
+Operation fusion reduces DRAM traffic by keeping intermediate tensors on-chip.
+Production compilers such as XLA fuse simple patterns, but each fusion region contains at most one matrix operation.
+FAST introduced an ILP-based fusion technique that pins activation and weight tensors in Global Memory to minimize total execution time, but with a static placement model restricted to consecutively-executed operations. More recently, Neptune~\citep{zhao2026neptuneadvancedmloperator} introduced advanced operator fusion for reduction sequences on GPUs, intentionally breaking loop-carried dependencies and compensating via algebraic correction expressions to enable fusion of patterns like attention mechanisms.  The oneDNN Graph Compiler~\citep{li2024onednngraphcompilerhybrid} demonstrated a hybrid approach combining library-backed matrix kernels with compiler-generated fusion to achieve state-of-the-art performance across diverse DNN workloads on CPUs.  FusionStitching~\citep{zheng2021fusionstitchingboostingmemoryintensive} explores large fusion spaces with a domain-specific cost model to combine memory-intensive operators with varied data dependencies into single GPU kernels. RedFuser~\citep{Tang_2026} presents a formal methodology for cascaded reduction fusion with automated kernel generation, achieving 2--5$\times$ speedup over state-of-the-art compilers on attention-like workloads. Multi-DOF Fusion~\citep{chen_multi_dof} enables layers within a fusion group to adopt varying tiling scales, distributing memory utilization to maximize inter-layer data reuse on ASIC accelerators.  These works address fusion at the compiler or kernel level for fixed hardware; our contribution is to co-optimize fusion jointly with tiling and hardware configuration through a unified LP formulation.
+
+% Rematerialization / checkpointing
+Rematerialization (recomputing values instead of storing them) is well-studied in the context of training memory optimization.
+\citep{chen2016trainingdeepnetssublinear} proposed gradient checkpointing to trade compute for memory during backpropagation.
+\citep{jain2020checkmatebreakingmemorywall} formulated optimal checkpointing as an ILP. \citep{bartan2023moccasinefficienttensorrematerialization} proposed Moccasin, a constraint programming formulation for tensor rematerialization with only $\mathcal{O}(n)$ integer variables (a significant reduction from the $\mathcal{O}(n^2)$ Boolean variables in Checkmate), achieving an order of magnitude speedup on large compute graphs.  \cite{zhang2023coopmemorycommodity} introduced Coop, which treats memory as a non-commodity resource in rematerialization scheduling, demonstrating that memory heterogeneity must be explicitly modeled rather than abstracted away. \citep{patil2022poettrainingneuralnetworks} presented POET, a MILP framework that jointly optimizes rematerialization with paging across heterogeneous memory hierarchies (SRAM, flash, SD card), enabling fine-tuning of large architectures on devices with as little as 32\,KB RAM. BladeDISC++~\citep{yuan2024bladediscmemoryoptimizationsbased} extends rematerialization to dynamic-shape graphs using symbolic shape analysis, addressing the challenge that tensor sizes may be unknown at compile time. 
+Our CHEETAH-V0 formulation adapts rematerialization to the inference setting, uniquely integrating it with time-indexed placement in a single LP that enables joint reasoning about eviction, recomputation, and fusion.
+
+\paragraph{Joint optimization and linearization techniques.}
+The interaction between tiling decisions and fusion opportunities is a bilinear optimization problem: execution time depends on the product of tiling selection and tensor placement variables.
+McCormick envelopes provide exact linearization of bilinear terms over box-constrained domains by introducing auxiliary variables and four linear constraints per product term.
+The foundational work by McCormick established convex underestimators for factorable nonconvex programs \citep{mccormick1976computability}.
+Our CHEETAH-V1 formulation applies McCormick linearization to the tiling $\times$ placement interaction, enabling exact reformulation as a LP.
+% PDLP
+\citep{applegate2022practicallargescalelinearprogramming} developed PDLP, a practical first-order method for large-scale LP solving that scales to instances with billions of nonzeros, based on which we build our variant of LP solver that empowers solving the system CHEETAH-V0 and CHEETAH-V1 LPs efficiently. \citep{lu2024cupdlpjlgpuimplementationrestarted} proposed cuPDLP.jl, a GPU implementation of restarted PDHG that was the first GPU-based LP solver to match or outperform commercial simplex and interior-point solvers on large-scale instances. The subsequent C/CUDA implementation cuPDLP-C~\citep{lu2024cupdlpcstrengthenedimplementationcupdlp} introduced advanced presolve routines and engineering optimizations, further reducing solve times for problems exceeding the memory capacity of a single GPU. Most recently, cuPDLPx \citep{lu2025cupdlpxenhancedgpubasedfirstorder} incorporates additional algorithmic heuristics including PID-controlled primal weighting and improved convergence behavior, establishing the current state of the art for first-order GPU-accelerated LP solving.  Our JAX-based solver inherits the PDHG algorithmic framework from this lineage while exploiting the structural invariance of our constraint matrices for efficient preconditioning across hardware trials.
+
+\paragraph{Tiling and loop optimization.}
+Optimal tiling for nested loop computations has been studied extensively in the compiler community.
+% Halide
+\citep{ragan2013halide} introduced Halide, a language for optimizing parallelism and locality in image processing pipelines.
+% TVM / Ansor
+\citep{zheng2023ansorgeneratinghighperformancetensor} proposed Ansor, which generates high-performance tensor programs via hierarchical search.
+% ZigZag
+Mei \etal~enlarged the joint architecture-mapping design space for DNN accelerators in ZigZag \citep{mei2021zigzag}.
+These works optimize tiling for fixed hardware; our contribution is to co-optimize tiling with fusion decisions.
+
+\paragraph{Polyhedral compilation.}
+The polyhedral model reasons jointly about tiling and fusion as affine transformations of loop nests. Feautrier's affine scheduling~\citep{feautrier1992affine} established the framework; Pluto~\citep{bondhugula2008pluto} made it a practical automatic parallelizer and locality optimizer; Tiramisu~\citep{baghdadi2019tiramisu} exposes the same machinery as a scheduling language for fast, portable code. Closest to our fusion question, Acharya \etal~\citep{acharya2020fusion} cast fusion partitioning as optimization over a fusion conflict graph. All of these target \emph{fixed} hardware and optimize over loop transformations rather than memory-management decisions: none model time-varying buffer residency, eviction, or rematerialization as scheduling variables, and hardware parameters are never decision variables. TileFlow and FADiff likewise fix hardware and provide no valid lower bounds, whereas our LP bounds are exact at integral decisions and extend to hardware sizing in V3. The relationship is complementary rather than competing. Execution \emph{reordering}, the polyhedral core strength, is the one axis CHEETAH fixes: timesteps are positions in a fixed topological order supplied as input, which is also what places polyhedral methods outside the sequential-pipeline class of Definition~\ref{def:seq_scope}. Making order a decision above the LP, for example by enumerating candidate reuse-distance-minimizing topological sorts and applying them symmetrically to our method and every baseline, is future work.
+
+\paragraph{LLM-guided optimization and scientific discovery.}
+Recent work has demonstrated that large language models can serve as effective mutation operators in evolutionary search.
+% FunSearch
+Romera-Paredes \etal~introduced FunSearch, pairing a pretrained LLM with an evaluator to discover new solutions to open mathematical problems \citep{romera2024mathematical}.
+% AlphaEvolve
+\citep{novikov2025alphaevolvecodingagentscientific} presented AlphaEvolve, an evolutionary coding agent powered by Gemini that discovered improved algorithms for data center scheduling, chip design, and matrix multiplication.
+% EvoPrompting
+Chen \etal~proposed EvoPrompting, combining evolutionary search with LLM-based code generation for neural architecture discovery \citep{chen2023evopromptinglanguagemodelscodelevel}. Concurrently, LUMINA~\citep{zhang2026luminallmguidedgpuarchitecture} uses LLM-guided bottleneck analysis to steer GPU architecture design space exploration, where the LLM diagnoses roofline bottlenecks and proposes targeted architectural modifications, a closely related approach to our Causal Architect, though targeting GPU design rather than custom inference accelerators.  LIMCA \citep{vungarala2025limcallmautomatinganalog} introduced the first LLM-driven automated design exploration framework for analog in-memory computing crossbar architectures, demonstrating that LLMs can generate hardware designs under power, area, and accuracy constraints. 
+% EvoTune / LLaMEA
+% NEW — https://arxiv.org/abs/2504.05108
+\citep{surina2025algorithmdiscoveryllmsevolutionary} demonstrated that combining evolutionary search with reinforcement learning fine-tuning of LLMs yields stronger algorithm discovery than treating the LLM as a static generator. 
+Our LLM-guided hardware search draws on these ideas, using an LLM to propose hardware configurations informed by workload analysis and prior trial outcomes, while the joint LP provides rigorous inner-loop optimization. Unlike approaches that use LLMs to directly generate code or predict performance, our Architect operates strictly as a search-space editor: it constrains the neighborhood for Vizier's Bayesian optimization, with all evaluation performed by the deterministic V1 LP and roofline auditor.
+
+\paragraph{Datacenter accelerator economics.}
+The economic viability of specialized accelerators depends on deployment scale.
+% ASIC Clouds
+\citep{magaki2016asic,xie2018extreme}~analyzed specialization economics under total cost of ownership.
+% TPUv4i
+\citep{jouppi2021ten} distilled lessons from three generations of TPU design.
+FAST provided ROI analysis showing that specialized accelerators can be profitable with deployments of $2,000$--$4,000$ units.
+Our joint optimization targets the same deployment regime, but achieves better Perf/TDP through the larger effective search space of joint tiling-fusion optimization.

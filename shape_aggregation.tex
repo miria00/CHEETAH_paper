@@ -1,0 +1,88 @@
+\section{Solving the Master Program at Scale: Shape Aggregation}
+\label{app:shape_agg}
+
+The comprehensive V3 program (\cref{app:master_v3}) is large: built naively, with
+one copy of every tiling, coupling, and roofline variable per operation, the
+DeepSeek-V3 instance reaches ${\sim}8.7$M rows and does not solve within a
+practical iteration budget. This appendix describes the scalability path we adopt,
+adapted from the resource-allocation solver of \citet{cvxcluster2026}, which solves
+granular cluster placement $100$--$1000\times$ faster by aggregating identical
+entities into \emph{shapes} rather than reasoning about each entity individually.
+The same principle collapses our program by roughly two orders of magnitude.
+
+\paragraph{Servers, shapes, and multiplicities.}
+In the cluster-placement setting of \citet{cvxcluster2026}, a \emph{server} is one
+physical placement target, and a \emph{shape} is an equivalence class of servers
+with identical resource profiles (the same CPU/memory/GPU configuration). A cluster
+with thousands of servers has only tens of distinct shapes, so one aggregated
+variable per shape, weighted by its \emph{multiplicity} (how many servers it
+stands for), replaces thousands of per-server variables. The linear program then
+scales with the number of \emph{shapes}, not the number of \emph{servers}.
+
+The analogy to our program is exact once the entities are named correctly. Our
+``server'' is an \emph{operation instance}: a node at a specific position in the
+network's execution order. Our ``shape'' is an equivalence class of operations with
+\emph{identical dimensions} $(C,M,R,S,P,Q,N)$ and strides. Two operations of the
+same shape have byte-for-byte identical Timeloop Pareto data and roofline
+coefficients (\cref{sec:v3_levers} confirmed this: our four target LLMs comprise
+$720$--$903$ operations each but only $29$ \emph{unique} shapes in total; Llama-3
+70B's $720$ operations collapse to just $6$). Every shape-dependent block of the
+program (tile selection $y$, the McCormick auxiliaries $w,\zeta$, the per-tile
+compute and memory coefficients $\Tmin,\Tmax,t_i^k,d^{\ast}$, and the perspective
+epigraph $\tau$) is therefore identical across all operations of a shape. Building
+one aggregated copy per shape $s$ with multiplicity $m_s$ (the count of operations
+of that shape), and replacing $\sum_i T_i$ by $\sum_s m_s\, T_s$, shrinks these
+blocks from $O(N)$ to $O(S)$ with $S \ll N$ (here $S\approx 6$ versus $N=720$), the
+${\sim}100\times$ reduction that makes the single-solve program tractable.
+
+\paragraph{Decoupling the shape dimension from the time dimension.}
+There is one difference between our program and cluster placement that must be
+handled with care, and it is the crux of the aggregation. The placement problem of
+\citet{cvxcluster2026} is solved as a sequence of \emph{static snapshots}: the
+program at any one instant has no notion of time, so identical servers are fully
+interchangeable within it and aggregation is lossless. (Their scheduler is
+online and re-solves as the workload mix changes; it is each round's program,
+not the system, that is time-free.) Our
+program has a \emph{time-indexed schedule}: the residency variables $p_{e,t}$ and
+the per-timestep capacity rows track which tensors are pinned, evicted, or
+recomputed at each step, and two operations of the same shape sitting at
+\emph{different} positions in the execution order have different residency states.
+Collapsing the time axis by shape would therefore be incorrect.
+
+We resolve this by \emph{factoring the program along its two axes} and aggregating
+only the axis that permits it. The \textbf{shape-invariant block}, tiling, the
+compute and memory rooflines, the McCormick coupling, and the entire hardware-sizing
+layer (the reciprocals $v,u$, the caps, and every decision of \cref{sec:v3_levers})
+,  depends on an operation only through its shape, and is aggregated per unique
+shape. This block is where the $8.7$M rows lived: they were overwhelmingly redundant
+copies of the same handful of shapes, and aggregating them is the entire size win.
+The \textbf{time-indexed residency block}, $p_{e,t}$, rematerialization, and the
+capacity rows, stays per-instance, because it encodes \emph{position}, not shape;
+it is a comparatively small, banded structure, and it can be compressed further on
+its own terms (a steady-state residency pattern per shape, or a coarsened time grid)
+without touching the shape-aggregated part. Concretely: ``decoupling server from
+time'' means writing the program as (shape-dependent, aggregatable) rows times
+(time-dependent, per-instance) rows, and applying shape aggregation to the first
+factor only. The hardware variables $v,u,\mathrm{MACs},\mathrm{BW},C_{\mathrm{GM}}$
+are already global (one set for the whole chip), so the entire co-design layer is
+shape- and time-invariant and aggregates trivially.
+
+\paragraph{Dual-guided rounding.}
+\citet{cvxcluster2026} also extract the LP's dual variables, dual variables on
+each resource, and use them to rank and greedily round the relaxed assignments,
+which is tighter than naive rounding. We already round the relaxed tile selection by
+$\arg\max_c y_{i,c}$ and re-solve (\cref{sec:v1}); the same dual-guided ranking
+sharpens the rounding of the \emph{new} integer knobs the comprehensive program adds
+,  the expert-pin $g_e$, the precision one-hots $q_{\rho}$, and the array-aspect
+one-hot $\alpha_a$, by pinning first the knobs whose reduced cost most improves
+the certified bound.
+
+\paragraph{An independent validation of the paradigm.}
+Beyond the scalability trick, \citet{cvxcluster2026} is a useful external data point:
+a contemporaneous system that, for a completely different problem (datacenter task
+placement), independently arrives at CHEETAH's exact recipe, relax a hard discrete
+program to a convex one, read the dual variables as interpretable dual signals that
+feed an outer decision loop, and round greedily against those duals. That the same
+LP-relaxation-plus-dual-feedback structure is effective across such different
+domains is evidence that the paradigm at the core of CHEETAH is sound and general,
+rather than an artifact of accelerator co-design.

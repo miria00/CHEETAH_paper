@@ -1,0 +1,394 @@
+% \section{LP Formulation Details}
+% \label{app:lps}
+
+% \subsection{Linear Programs and Solvers}
+% \label{sec:lps}
+% A Linear Program (LP) is a mathematical optimization technique for modeling systems of linear relationships. Formally, it consists of a linear objective function (such as minimizing a function of latency/throughput) subject to a set of linear inequality constraints that define a feasible solution region in a high-dimensional space. Equation~\ref{eq:lp} shows the canonical LP form. LP Solvers are mature software used to search through this solution space to return the optimal value and decision variables. While standard LPs allow for continuous variables, practical hardware design often requires discrete decisions—such as is a tensor pinned completed on SRAM. To address this, Integer Linear Programming (ILP) restricts certain variables to return only integer values. In large-scale co-design, solving an ILP directly is often computationally prohibitive, therefore necessary simplifications and assumptions are made to shrink the problem. As noted by FAST, this ease of implementation greatly reduces the ILP problem size, at the cost of potential suboptimal solutions. Additionally the relationship between tiling, fusion, and memory is often non-linear, which restricts the expressiveness of the problem formulation. In order to address this limitation in CHEETAH, we utilize McCormick envelopes to provide a tight relaxation, ensuring that the gap between the continuous LP "ideal" and the final rounded hardware spec remains minimal. This process takes the fractional outputs of the LP (e.g., a tiling factor of 7.8) and maps them to the nearest valid integer (e.g., 8) while checking for feasibility. This enables CHEETAH to capture globally optimal solutions without sacrificing optimality due to restrictive linear/scale limitations.
+
+% \begin{equation}
+% \begin{aligned}
+%     \minimize_{x} \quad & c^\top x \\
+%     \text{subject to} \quad
+%     & l_c \leq A x \leq u_c,
+%       %& & \text{(row bounds; equality when } l_c = u_c\text{)} \\
+%     & l_v \leq x \leq u_v
+%       %& & \text{(variable box bounds)}
+% \end{aligned}
+% \label{eq:lp}
+% \end{equation}
+
+% \subsection{V0 Formulation Detailed Variable and Constraint Digest.}
+% The objective minimizes total execution time $\sum_i T_i$ plus rematerialization costs $c_i^{\text{remat}} r_{i,t}$, where $r_{i,t} \in [0,1]$ indicates whether operation $i$ is recomputed at timestep $t$.
+% Each $T_i$ is lower-bounded by two terms: the \emph{all-on-chip} time $T_i^{\min}$ (a physical floor), and the \emph{all-off-chip} time $T_i^{\max}$ minus DRAM savings $t_i^k \cdot p_{i,o(i)}^k$ from any tensors pinned in Global Memory at execution time $o(i)$.
+% The placement variables $p_{i,t}^k \in [0,1]$ track whether tensor $k \in \{I, O, W\}$ of operation $i$ resides in Global Memory at timestep $t$, subject to a capacity constraint $C_{\text{GM}}$ at every timestep.
+% The persistence constraint $p_{i,t}^k \leq p_{i,t-1}^k + r_{i,t}$ enforces that a tensor can only be present at time $t$ if it was either already present at $t{-}1$ or was just recomputed; weight tensors satisfy the stricter $p_{i,t}^W \leq p_{i,t-1}^W$ since weights cannot be recomputed.
+% Rematerialization is disabled before an operation executes ($r_{i,t} = 0$ for $t \leq o(i)$) and is only possible when both the required input edges and the operation's weights are available on-chip. Note in this formulation, the persistence constraint ($p_{i,t}^k \leq p_{i,t-1}^k + r_{i,t}$) ensures a tensor can only be present at time $t$ if it was present at $t{-}1$ or was just recomputed. Weight tensors ($p_{i,t}^W \leq p_{i,xt-1}^W$) cannot be recomputed---once evicted, they must be reloaded from DRAM. These are simplifications we make in our current version of V0, and can be easily extended to handle more complex situations. For DeepSeek-V3 with $L \approx 6{,}300$ operations, V0 has approximately 3.3M variables and 3.7M constraints with 7.3M nonzeros (see \cref{tab:exp1_lp_sizes} in the appendix for all models).
+
+% % \subsection{V1 Complete Formulation Detailed Variable and Constraint Digest.}
+% % Combining tiling selection, time-indexed placement, rematerialization, and McCormick linearization, the full V1  formulation is:
+
+% % % \begin{equation}
+% % % % \label{eq:v1}
+% % % \begin{aligned}
+% % % \min \quad & \sum_{i \in \mathcal{N}} T_i + \sum_{i \in \mathcal{N}} \sum_{t \in \mathcal{T}} c_i^{\text{remat}} \, r_{i,t} \\[4pt]
+% % % \text{s.t.} \quad
+% % % & \sum_{c \in \mathcal{C}_i} y_{i,c} = 1 & \forall\, i \in \mathcal{N} \\[3pt]
+% % % & T_i \geq \sum_{c \in \mathcal{C}_i} \Tmax_i(c)\, y_{i,c} - \sum_{c \in \mathcal{C}_i} \sum_{k} t_i^k(c)\, w_{i,c,k} & \forall\, i \in \mathcal{N} \\[3pt]
+% % % & T_i \geq \sum_{c \in \mathcal{C}_i} \Tmin_i(c)\, y_{i,c} & \forall\, i \in \mathcal{N} \\[3pt]
+% % % & w_{i,c,k} \leq y_{i,c} & \forall\, i, c, k \\
+% % % & w_{i,c,k} \leq p_{\text{assoc}(i,k),\, o(i)} & \forall\, i, c, k \\
+% % % & w_{i,c,k} \geq y_{i,c} + p_{\text{assoc}(i,k),\, o(i)} - 1 & \forall\, i, c, k \\[3pt]
+% % % & \sum_{e \in \mathcal{E}} d_e\, p_{e,t} + \sum_{i \in \mathcal{N}} d_i^W\, p_{i,t}^W \leq \CGM & \forall\, t \in \mathcal{T} \\[3pt]
+% % % & p_{e,t} \leq p_{e,t-1} + r_{\text{src}(e),\, t} & \forall\, e, t > o(\text{src}(e)) \\
+% % % & p_{i,t}^W \leq p_{i,t-1}^W & \forall\, i, t > o(i) \\[3pt]
+% % % & r_{i,t} = 0 & \forall\, i, t \leq o(i) \\
+% % % & r_{i,t} \leq p_{e,t} & \forall\, e \in \text{in}(i), t > o(i) \\
+% % % & r_{i,t} \leq p_{i,t}^W & \forall\, i, t > o(i) \\[3pt]
+% % % & T_i, p_{e,t}, p_{i,t}^W, r_{i,t}, w_{i,c,k} \geq 0 &
+% % % \end{aligned}
+% % % \tag{\textcolor{skyblue}{V1}}\label{eq:v1}
+% % % \end{equation}
+
+% % \begin{equation}
+% % \begin{aligned}
+% % \min \quad & \sum_{i \in \mathcal{N}} T_i + \sum_{i \in \mathcal{N}} \sum_{t \in \mathcal{T}} c_i^{\text{remat}} \, r_{i,t} \\[4pt]
+% % \text{s.t.} \quad
+% % & \sum_{c \in \mathcal{C}_i} y_{i,c} = 1 & \forall\, i \in \mathcal{N} \\[3pt]
+% % & T_i \geq \max\!\left(\sum_{c \in \mathcal{C}_i} \Tmin_i(c)\, y_{i,c},\;\; \sum_{c \in \mathcal{C}_i} \Tmax_i(c)\, y_{i,c} - \sum_{c \in \mathcal{C}_i} \sum_{k} t_i^k(c)\, w_{i,c,k}\right) & \forall\, i \in \mathcal{N} \\[3pt]
+% % & w_{i,c,k} \leq y_{i,c}, \quad w_{i,c,k} \leq p_{\text{assoc}(i,k),\, o(i)}, \quad w_{i,c,k} \geq y_{i,c} + p_{\text{assoc}(i,k),\, o(i)} - 1 & \forall\, i, c, k \\[3pt]
+% % & \sum_{e \in \mathcal{E}} d_e\, p_{e,t} + \sum_{i \in \mathcal{N}} d_i^W\, p_{i,t}^W \leq \CGM & \forall\, t \in \mathcal{T} \\[3pt]
+% % & p_{e,t} \leq p_{e,t-1} + r_{\text{src}(e),\, t} & \forall\, e,\, t > o(\text{src}(e)) \\
+% % & p_{i,t}^W \leq p_{i,t-1}^W & \forall\, i,\, t > o(i) \\[3pt]
+% % & r_{i,t} = 0 \;\; \forall\, t \leq o(i); \quad r_{i,t} \leq \min\!\big(p_{e,t},\, p_{i,t}^W\big) \;\; \forall\, e \in \text{in}(i),\, t > o(i) \\[3pt]
+% % & T_i,\, p_{e,t},\, p_{i,t}^W,\, r_{i,t},\, w_{i,c,k} \geq 0 &
+% % \end{aligned}
+% % \tag{\textcolor{skyblue}{V1}}\label{eq:v1}
+% % \end{equation}
+
+% % The V1 formulation extends V0 by making the tiling configuration a decision variable. The selection variables $y_{i,c} \in [0,1]$, with $\sum_c y_{i,c} = 1$, choose among $|\mathcal{C}_i|$ Pareto-optimal tiling configurations precomputed by Timeloop (Section~\ref{sec:pareto}). Each configuration $c$ determines the operation's compute cost $T_i^{\max}(c)$, on-chip floor $T_i^{\min}(c)$, and per-tensor DRAM savings $t_i^k(c)$.
+% % The DRAM savings term $t_i^k(c) \cdot y_{i,c} \cdot p_{\text{assoc}(i,k),\,o(i)}$ 
+% % is bilinear in the tiling selection and placement variables; we linearize it 
+% % via McCormick auxiliary variables $w_{i,c,k}$, constrained by 
+% % $w_{i,c,k} \leq y_{i,c}$, $w_{i,c,k} \leq p_{\text{assoc}(i,k),\,o(i)}$, and 
+% % $w_{i,c,k} \geq y_{i,c} + p_{\text{assoc}(i,k),\,o(i)} - 1$. 
+% % These three inequalities force $w_{i,c,k} = y_{i,c} \cdot p_{\text{assoc}(i,k),\,o(i)}$ 
+% % at any integer-feasible point (\cref{prop:mccormick_exact}), so the LP exactly captures the 
+% % bilinear interaction without introducing any relaxation gap at integer vertices.
+% % The $T_i$ lower bound now takes the maximum of two configuration-dependent terms: the weighted on-chip floor $\sum_c T_i^{\min}(c)\, y_{i,c}$ and the weighted off-chip cost minus achievable savings $\sum_c T_i^{\max}(c)\, y_{i,c} - \sum_{c,k} t_i^k(c)\, w_{i,c,k}$.
+% % This coupling is the core novelty of V1: the solver can accept a tiling with higher $T_i^{\max}(c)$ (lower compute utilization) if its smaller working set enables pinning decisions that reduce total DRAM traffic by more than the utilization loss.
+% % All remaining constraints---memory capacity, persistence, and rematerialization---carry over from V0 with edge-indexed placement variables $p_{e,t}$ replacing per-tensor $p_{i,t}^k$ to correctly handle skip connections and multi-fanout nodes. For our largest workload, DeepSeek-V3 ($L \approx 6{,}300$ operations), the V1 LP contains approximately 2.5M variables, 3.0M constraints, and 6.1M nonzeros. Table~\ref{tab:v1_scale} provides a representative breakdown; full per-model sizes are in Table~\ref{tab:v1_scale}. 
+
+% page edit
+
+\section{Linear Program Formulation Details}
+\label{app:lps}
+
+\subsection{Linear Programs and Solvers}
+\label{app:lps}
+A Linear Program (LP) is a mathematical optimization technique for modeling systems of linear relationships. Formally, it consists of a linear objective function (such as minimizing a function of latency/throughput) subject to a set of linear inequality constraints that define a feasible solution region in a high-dimensional space. Equation~\ref{eq:lp} shows the canonical LP form. LP Solvers are mature software used to search through this solution space to return the optimal value and decision variables. While standard LPs allow for continuous variables, practical hardware design often requires discrete decisions, such as if a tensor pinned completed on SRAM. To address this, Integer Linear Programming (ILP) restricts certain variables to return only integer values. In large-scale co-design, solving an ILP directly is often computationally prohibitive, therefore necessary simplifications and assumptions are made to shrink the problem. As noted by FAST, this ease of implementation greatly reduces the ILP problem size, at the cost of potential suboptimal solutions. Additionally the relationship between tiling, fusion, and memory is often non-linear, which restricts the expressiveness of the problem formulation. In order to address this limitation in CHEETAH, we utilize McCormick envelopes to provide a tight relaxation, ensuring that the gap between the continuous LP "ideal" and the final rounded hardware spec remains minimal. This process takes the fractional outputs of the LP (e.g., a tiling factor of 7.8) and maps them to the nearest valid integer (e.g., 8) while checking for feasibility. This enables CHEETAH to capture globally optimal solutions without sacrificing optimality due to restrictive linear/scale limitations.
+
+\begin{equation}
+\begin{aligned}
+    \minimize_{x} \quad & c^\top x \\
+    \text{subject to} \quad
+    & l_c \leq A x \leq u_c,
+      %& & \text{(row bounds; equality when } l_c = u_c\text{)} \\
+    & l_v \leq x \leq u_v
+      %& & \text{(variable box bounds)}
+\end{aligned}
+\label{eq:lp}
+\end{equation}
+
+\subsection{V0 Formulation Detailed Variable and Constraint Digest.}
+The objective minimizes total execution time $\sum_i T_i$ plus rematerialization costs $c_i^{\text{remat}} r_{i,t}$, where $r_{i,t} \in [0,1]$ indicates whether operation $i$ is recomputed at timestep $t$.
+Each $T_i$ is lower-bounded by two terms: the \emph{all-on-chip} time $T_i^{\min}$ (a physical floor), and the \emph{all-off-chip} time $T_i^{\max}$ minus DRAM savings $t_i^k \cdot p_{i,o(i)}^k$ from any tensors pinned in Global Memory at execution time $o(i)$.
+The placement variables $p_{i,t}^k \in [0,1]$ track whether tensor $k \in \{I, O, W\}$ of operation $i$ resides in Global Memory at timestep $t$, subject to a capacity constraint $C_{\text{GM}}$ at every timestep.
+The persistence constraint $p_{i,t}^k \leq p_{i,t-1}^k + r_{i,t}$ enforces that a tensor can only be present at time $t$ if it was either already present at $t{-}1$ or was just recomputed; weight tensors satisfy the stricter $p_{i,t}^W \leq p_{i,t-1}^W$ since weights cannot be recomputed.
+Rematerialization is disabled before an operation executes ($r_{i,t} = 0$ for $t \leq o(i)$) and is only possible when both the required input edges and the operation's weights are available on-chip. Note in this formulation, the persistence constraint ($p_{i,t}^k \leq p_{i,t-1}^k + r_{i,t}$) ensures a tensor can only be present at time $t$ if it was present at $t{-}1$ or was just recomputed. Weight tensors ($p_{i,t}^W \leq p^W_{i,t-1}$) cannot be recomputed: once evicted, they must be reloaded from DRAM. These are simplifications we make in our current version of V0, and can be easily extended to handle more complex situations. For DeepSeek-V3 with $L \approx 6{,}300$ operations, V0 has approximately 3.3M variables and 3.7M constraints with 7.3M nonzeros (see \cref{tab:exp1_lp_sizes} in the appendix for all models).
+
+
+
+
+% \todo{Insert ablation table in the style of FAST Table~6. Evaluate V1 with individual components reverted to the FAST baseline:
+% \begin{itemize}
+%     \item V1 without rematerialization ($r_{i,t} = 0$)
+%     \item V1 without time-indexed placement (collapse to static $p_i^k$)
+%     \item V1 without joint tiling (fix $y_{i,c}$ to Timeloop's greedy choice)
+%     \item V1 without McCormick (sequential Timeloop $\rightarrow$ fusion)
+% \end{itemize}
+% }
+
+
+
+% \subsection{V1 Complete Formulation Detailed Variable and Constraint Digest.}
+% Combining tiling selection, time-indexed placement, rematerialization, and McCormick linearization, the full V1  formulation is:
+
+% % \begin{equation}
+% % % \label{eq:v1}
+% % \begin{aligned}
+% % \min \quad & \sum_{i \in \mathcal{N}} T_i + \sum_{i \in \mathcal{N}} \sum_{t \in \mathcal{T}} c_i^{\text{remat}} \, r_{i,t} \\[4pt]
+% % \text{s.t.} \quad
+% % & \sum_{c \in \mathcal{C}_i} y_{i,c} = 1 & \forall\, i \in \mathcal{N} \\[3pt]
+% % & T_i \geq \sum_{c \in \mathcal{C}_i} \Tmax_i(c)\, y_{i,c} - \sum_{c \in \mathcal{C}_i} \sum_{k} t_i^k(c)\, w_{i,c,k} & \forall\, i \in \mathcal{N} \\[3pt]
+% % & T_i \geq \sum_{c \in \mathcal{C}_i} \Tmin_i(c)\, y_{i,c} & \forall\, i \in \mathcal{N} \\[3pt]
+% % & w_{i,c,k} \leq y_{i,c} & \forall\, i, c, k \\
+% % & w_{i,c,k} \leq p_{\text{assoc}(i,k),\, o(i)} & \forall\, i, c, k \\
+% % & w_{i,c,k} \geq y_{i,c} + p_{\text{assoc}(i,k),\, o(i)} - 1 & \forall\, i, c, k \\[3pt]
+% % & \sum_{e \in \mathcal{E}} d_e\, p_{e,t} + \sum_{i \in \mathcal{N}} d_i^W\, p_{i,t}^W \leq \CGM & \forall\, t \in \mathcal{T} \\[3pt]
+% % & p_{e,t} \leq p_{e,t-1} + r_{\text{src}(e),\, t} & \forall\, e, t > o(\text{src}(e)) \\
+% % & p_{i,t}^W \leq p_{i,t-1}^W & \forall\, i, t > o(i) \\[3pt]
+% % & r_{i,t} = 0 & \forall\, i, t \leq o(i) \\
+% % & r_{i,t} \leq p_{e,t} & \forall\, e \in \text{in}(i), t > o(i) \\
+% % & r_{i,t} \leq p_{i,t}^W & \forall\, i, t > o(i) \\[3pt]
+% % & T_i, p_{e,t}, p_{i,t}^W, r_{i,t}, w_{i,c,k} \geq 0 &
+% % \end{aligned}
+% % \tag{\textcolor{skyblue}{V1}}\label{eq:v1}
+% % \end{equation}
+
+% \begin{equation}
+% \begin{aligned}
+% \min \quad & \sum_{i \in \mathcal{N}} T_i + \sum_{i \in \mathcal{N}} \sum_{t \in \mathcal{T}} c_i^{\text{remat}} \, r_{i,t} \\[4pt]
+% \text{s.t.} \quad
+% & \sum_{c \in \mathcal{C}_i} y_{i,c} = 1 & \forall\, i \in \mathcal{N} \\[3pt]
+% & T_i \geq \max\!\left(\sum_{c \in \mathcal{C}_i} \Tmin_i(c)\, y_{i,c},\;\; \sum_{c \in \mathcal{C}_i} \Tmax_i(c)\, y_{i,c} - \sum_{c \in \mathcal{C}_i} \sum_{k} t_i^k(c)\, w_{i,c,k}\right) & \forall\, i \in \mathcal{N} \\[3pt]
+% & w_{i,c,k} \leq y_{i,c}, \quad w_{i,c,k} \leq p_{\text{assoc}(i,k),\, o(i)}, \quad w_{i,c,k} \geq y_{i,c} + p_{\text{assoc}(i,k),\, o(i)} - 1 & \forall\, i, c, k \\[3pt]
+% & \sum_{e \in \mathcal{E}} d_e\, p_{e,t} + \sum_{i \in \mathcal{N}} d_i^W\, p_{i,t}^W \leq \CGM & \forall\, t \in \mathcal{T} \\[3pt]
+% & p_{e,t} \leq p_{e,t-1} + r_{\text{src}(e),\, t} & \forall\, e,\, t > o(\text{src}(e)) \\
+% & p_{i,t}^W \leq p_{i,t-1}^W & \forall\, i,\, t > o(i) \\[3pt]
+% & r_{i,t} = 0 \;\; \forall\, t \leq o(i); \quad r_{i,t} \leq \min\!\big(p_{e,t},\, p_{i,t}^W\big) \;\; \forall\, e \in \text{in}(i),\, t > o(i) \\[3pt]
+% & T_i,\, p_{e,t},\, p_{i,t}^W,\, r_{i,t},\, w_{i,c,k} \geq 0 &
+% \end{aligned}
+% \tag{\textcolor{skyblue}{V1}}\label{eq:v1}
+% \end{equation}
+
+% The V1 formulation extends V0 by making the tiling configuration a decision variable. The selection variables $y_{i,c} \in [0,1]$, with $\sum_c y_{i,c} = 1$, choose among $|\mathcal{C}_i|$ Pareto-optimal tiling configurations precomputed by Timeloop (Section~\ref{sec:pareto}). Each configuration $c$ determines the operation's compute cost $T_i^{\max}(c)$, on-chip floor $T_i^{\min}(c)$, and per-tensor DRAM savings $t_i^k(c)$.
+% The DRAM savings term $t_i^k(c) \cdot y_{i,c} \cdot p_{\text{assoc}(i,k),\,o(i)}$ 
+% is bilinear in the tiling selection and placement variables; we linearize it 
+% via McCormick auxiliary variables $w_{i,c,k}$, constrained by 
+% $w_{i,c,k} \leq y_{i,c}$, $w_{i,c,k} \leq p_{\text{assoc}(i,k),\,o(i)}$, and 
+% $w_{i,c,k} \geq y_{i,c} + p_{\text{assoc}(i,k),\,o(i)} - 1$. 
+% These three inequalities force $w_{i,c,k} = y_{i,c} \cdot p_{\text{assoc}(i,k),\,o(i)}$ 
+% at any integer-feasible point (\cref{prop:mccormick_exact}), so the LP exactly captures the 
+% bilinear interaction without introducing any relaxation gap at integer vertices.
+% The $T_i$ lower bound now takes the maximum of two configuration-dependent terms: the weighted on-chip floor $\sum_c T_i^{\min}(c)\, y_{i,c}$ and the weighted off-chip cost minus achievable savings $\sum_c T_i^{\max}(c)\, y_{i,c} - \sum_{c,k} t_i^k(c)\, w_{i,c,k}$.
+% This coupling is the core novelty of V1: the solver can accept a tiling with higher $T_i^{\max}(c)$ (lower compute utilization) if its smaller working set enables pinning decisions that reduce total DRAM traffic by more than the utilization loss.
+% All remaining constraints---memory capacity, persistence, and rematerialization---carry over from V0 with edge-indexed placement variables $p_{e,t}$ replacing per-tensor $p_{i,t}^k$ to correctly handle skip connections and multi-fanout nodes. For our largest workload, DeepSeek-V3 ($L \approx 6{,}300$ operations), the V1 LP contains approximately 2.5M variables, 3.0M constraints, and 6.1M nonzeros. Table~\ref{tab:v1_scale} provides a representative breakdown; full per-model sizes are in Table~\ref{tab:v1_scale}. 
+
+\subsection{LP Matrix Sizes per Method}\label{append::lp_size}
+V0 can be larger than V1 because the two formulations scale differently.
+V0 uses separate time-indexed placement matrices for inputs, outputs,
+weights, and rematerialisation, giving roughly $4L^2$ placement and
+rematerialisation variables when $T = L$.
+V1 adds explicit tiling-selection variables over $C$ Pareto configurations
+and McCormick auxiliary variables, but these terms scale only as
+$\mathcal{O}(LC)$.
+More importantly, V1 replaces V0's separate input/output placement
+variables with an edge-indexed placement representation $p_{e,t}$, so the
+activation-placement block scales as $ET \approx L^2$ rather than separate
+layer-by-time input and output matrices.
+Thus V1's variable count is approximately $3L^2 + 4LC$, while V0 is
+approximately $4L^2$.
+For large workloads where $L \gg C$ (such as DeepSeek-V3 with $L = 903$
+and $C = 16$), the $L^2$ saving dominates the added tiling and McCormick
+variables.
+Therefore V1 is both more expressive and often more compact: it jointly
+models tiling, placement, rematerialisation, and fusion, while using
+edge-indexed placement to avoid redundant input/output placement variables. Although V1 is more expressive than V0, it is not simply V0 with extra variables; it reparameterizes placement using edge-indexed variables and adds Pareto tiling-selection variables. Thus, V1 inherits V0’s dynamic placement and rematerialization capabilities at the modeling level, while extending the feasible design space to include joint tiling-fusion trade-offs, subject to the coverage of the precomputed Pareto C-sets.
+
+\begin{table}[h]
+\centering
+\caption{Single Workload per Chip LP matrix sizes ($n_{\text{constraints}} \times n_{\text{vars}}$, nnz) per model and formulation.}
+\label{tab:exp1_lp_sizes}
+\resizebox{\textwidth}{!}{%
+\begin{tabular}{lccc}
+\toprule
+\textbf{Model} & \textbf{Static} & \textbf{V0 Dynamic} & \textbf{V1 Joint} \\
+\midrule
+EfficientNet-B1 & $803 \times 576$,\ nnz$=15{,}060$        & $59{,}571 \times 53{,}131$,\ nnz$=119{,}485$       & $62{,}728 \times 47{,}035$,\ nnz$=141{,}604$    \\
+EfficientNet-B2 & $803 \times 576$,\ nnz$=15{,}060$        & $59{,}571 \times 53{,}131$,\ nnz$=119{,}485$       & $62{,}728 \times 47{,}035$,\ nnz$=141{,}604$    \\
+EfficientNet-B3 & $908 \times 651$,\ nnz$=18{,}975$        & $76{,}116 \times 67{,}861$,\ nnz$=152{,}620$       & $77{,}743 \times 59{,}020$,\ nnz$=173{,}749$    \\
+EfficientNet-B4 & $1{,}118 \times 801$,\ nnz$=28{,}155$    & $115{,}281 \times 102{,}721$,\ nnz$=231{,}040$     & $112{,}498 \times 87{,}040$,\ nnz$=247{,}489$   \\
+EfficientNet-B5 & $1{,}356 \times 971$,\ nnz$=40{,}735$    & $169{,}460 \times 150{,}933$,\ nnz$=339{,}500$     & $159{,}503 \times 125{,}324$,\ nnz$=346{,}293$  \\
+EfficientNet-B6 & $1{,}566 \times 1{,}121$,\ nnz$=53{,}755$  & $225{,}905 \times 201{,}153$,\ nnz$=452{,}480$  & $207{,}698 \times 164{,}864$,\ nnz$=446{,}913$  \\
+EfficientNet-B7 & $1{,}909 \times 1{,}366$,\ nnz$=78{,}892$  & $335{,}518 \times 298{,}663$,\ nnz$=671{,}853$  & $299{,}965 \times 241{,}059$,\ nnz$=638{,}356$  \\
+\midrule
+Llama-1 13B     & $2{,}518 \times 1{,}801$,\ nnz$=135{,}355$ & $583{,}381 \times 519{,}121$,\ nnz$=1{,}167{,}840$ & $505{,}198 \times 411{,}840$,\ nnz$=1{,}061{,}089$ \\
+Llama-1 65B     & $5{,}038 \times 3{,}601$,\ nnz$=529{,}915$ & $2{,}333{,}161 \times 2{,}075{,}041$,\ nnz$=4{,}668{,}480$ & $1{,}917{,}658 \times 1{,}601{,}280$,\ nnz$=3{,}936{,}769$ \\
+Llama-3 70B     & $5{,}038 \times 3{,}601$,\ nnz$=529{,}915$ & $2{,}333{,}161 \times 2{,}075{,}041$,\ nnz$=4{,}668{,}480$ & $1{,}917{,}658 \times 1{,}601{,}280$,\ nnz$=3{,}936{,}769$ \\
+\midrule
+DeepSeek-V3     & $6{,}319 \times 4{,}516$,\ nnz$=829{,}852$ & $3{,}669{,}793 \times 3{,}263{,}443$,\ nnz$=7{,}342{,}293$ & $2{,}983{,}450 \times 2{,}504{,}019$,\ nnz$=6{,}094{,}156$ \\
+\bottomrule
+\end{tabular}%
+}
+\end{table}
+
+
+\begin{table}[h]
+\centering
+\caption{GeoMean Avg Maximum LP matrix size per model cluster (largest member LP).}
+\label{tab:exp2_cluster_lp_sizes}
+\resizebox{\textwidth}{!}{%
+\begin{tabular}{lccc}
+\toprule
+\textbf{Cluster} & \textbf{Static} & \textbf{V0 Dynamic} & \textbf{V1 Joint} \\
+\midrule
+EfficientNet & $1{,}909 \times 1{,}366$,\ nnz$=78{,}892$    & $335{,}518 \times 298{,}663$,\ nnz$=671{,}853$              & $299{,}965 \times 241{,}059$,\ nnz$=638{,}356$              \\
+Llama        & $5{,}038 \times 3{,}601$,\ nnz$=529{,}915$   & $2{,}333{,}161 \times 2{,}075{,}041$,\ nnz$=4{,}668{,}480$  & $1{,}917{,}658 \times 1{,}601{,}280$,\ nnz$=3{,}936{,}769$  \\
+Modern LLM   & $6{,}319 \times 4{,}516$,\ nnz$=829{,}852$   & $3{,}669{,}793 \times 3{,}263{,}443$,\ nnz$=7{,}342{,}293$  & $2{,}983{,}450 \times 2{,}504{,}019$,\ nnz$=6{,}094{,}156$  \\
+\bottomrule
+\end{tabular}%
+}
+\end{table}
+
+\subsection{LP Matrix Structure}\label{append::lp_perform}
+Table~\ref{tab:lp_structure_v0_v1} compares the structural properties of the V0 and V1 constraint matrices. Both formulations produce extreme-aspect-ratio sparse systems with a bimodal row-degree distribution and a parametric sparsity pattern invariant to workload coefficients, which enables custom solver preconditioning to be factored once per model and reused across all Vizier trials.
+\begin{table}[ht!]
+\centering
+\caption{Structural comparison of the two LP matrix formulations.
+For Llama3-70b: $L=720$, $T=720$, $E\approx L$.}
+\label{tab:lp_structure_v0_v1}
+\resizebox{\textwidth}{!}{%
+\begin{tabular}{lll}
+\toprule
+\textbf{Property} & \textbf{CHEETAH-V0} & \textbf{CHEETAH-V1} \\
+\midrule
+\textbf{Variables} &
+$T_i\ (L)$ + $p^I, p^O, p^W, r\ (4 \cdot L \cdot T)$ + $T_{\mathrm{final}}\ (1)$ &
+$T_i\ (L)$ + $y_{i,c}\ (LC)$ + $p_{e,t}\ (ET)$ \\
+& + $\mathit{FT}_i\ (L)\ \approx\ 4L^2 + 2L + 1$ &
++ $p^W, r\ (2LT)$ + $w_{i,c,k}\ (3LC)\ \approx\ 3L^2 + 4LC + L$ \\
+\midrule
+\textbf{Llama-3 70B actual} &
+$L{=}720,\ T{=}720\ \to$ 2.07M vars, 2.33M constraints, 4.67M nnz &
+Similar order of magnitude; $p_{e,t}$ is edge-indexed ($ET$) \\
+& &
+instead of layer-pair-indexed, which saves ${\approx}L^2$ vars \\
+& & when DAG is mostly linear \\
+\midrule
+\textbf{Density} &
+$\mathrm{nnz}/(m \cdot n) \approx 9.6 \times 10^{-7}$ (${\approx}1$ nnz per million entries) &
+Similar; row group (5) is the most dense \\
+\midrule
+\textbf{Avg.\ nnz/row} &
+$\approx 2.0$ &
+$\approx 2.0$ with bursts up to $4L + L$ on capacity rows \\
+\midrule
+\textbf{Constant pattern} &
+Yes, parametric in $L$. Every workload of $L$ layers gets the &
+Yes, parametric in $(L, C, E, T)$. DAG topology lives in \\
+\textbf{across runs} &
+exact same matrix template; only coefficient values &
+the $(i, e, t)$ index map, but row template is invariant. \\
+& (\texttt{T\_max}, \texttt{T\_min}, \texttt{d\_I/O/W}) change. &
+Sparsity pattern is workload-agnostic. \\
+\midrule
+\textbf{Banded} &
+Most rows touch only $(i,t)$ and $(i,t{-}1)$ &
+McCormick triples (4a/b/c) are 1–2 nnz; \\
+& (persistence chains, weight monotone, $\mathit{FT}$ recurrences). &
+persistence on edge (6) couples $(e,t)$ to $(e,t{-}1)$. \\
+& Bandwidth $\approx T$ along the time axis. & Same time-band structure. \\
+\midrule
+\textbf{Exception to} &
+Rows from group (C): global memory capacity per timestep &
+Rows from group (5): span all $E$ edges + all $L$ weight \\
+\textbf{band-ness} &
+span all $L$ weights at that timestep $\to$ wide ${\approx}L{+}2$ &
+footprints at that timestep $\to\ {\approx}E{+}L \approx 2L$ nnz \\
+& nnz rows, $T$ of them. & rows, $T$ of them. \\
+\midrule
+\textbf{Why constant} &
+Per-row degree distribution is bimodal: &
+Same bimodal pattern, plus a small $(3 \cdot L \cdot C)$ \\
+\textbf{pattern works} &
+$\mathcal{O}(L^2)$ rows with ${\leq}3$ nnz + $\mathcal{O}(T)$ fat &
+dense McCormick block. Still sparse in aggregate. \\
+\textbf{for solver} &
+capacity rows. Our solver handles this after preconditioning. & \\
+\bottomrule
+\label{tab:LP_struct}
+\end{tabular}%
+}
+\end{table}
+
+\subsection{Solving the Large Scale Systems Problem}
+\label{app:solver}
+
+One of the central challenges and barriers to entry in solving the V1 LP
+is its simultaneous extreme large scale and extreme ill-conditioning.
+
+The joint tiling + fusion + placement + remat LP for Llama-3 70B and
+DeepSeek-V3 has roughly 1.6\,M--2.5\,M decision variables, 1.9\,M--3\,M
+constraints, and 4\,M nonzeros. The variable layout is
+\[
+    T[L] \;\mid\; y[L,C] \;\mid\; p[E,T] \;\mid\; p_W[L,T]
+    \;\mid\; r[L,T] \;\mid\; w[L,C,3] \;\mid\; h_{\mathrm{GM}}[K],
+\]
+for $L \approx 720$--$903$ layers, $C = 16$--$20$ Pareto tile configs,
+and $T = L$ timesteps. At this scale, simplex and barrier solvers exhaust
+factorization memory, and traditional solvers were never engineered to
+refactor sparse Jacobians of this shape.
+
+The extreme ill-conditioning is unavoidable. Timeloop per-tile cycle
+counts $T_{\min}(c)$ and $T_{\max}(c)$ span $10^3$--$10^{10}$ cycles.
+The McCormick-envelope variables $w[L,C,3]$ inject products of those
+tile counts with normalized residency variables, so absolute matrix
+entries span ${\sim}10^7$ in magnitude; the
+\texttt{entry\_ratio} exceeds the $1\times10^7$ ``extreme'' threshold,
+and the \texttt{row\_norm\_ratio} blows past $10^6$, well outside what
+generic interior-point methods can tolerate without diverging.
+
+This combination of scale $\times$ conditioning $\times$ solve speed is
+exactly the regime where a first-order method based on the
+\emph{primal-dual hybrid gradient} (PDHG) is the only credible path.
+PDHG sidesteps matrix factorization entirely, costs $\mathcal{O}(\text{nnz})$
+per step, and converges as long as the operator can be preconditioned and
+step sizes chosen adaptively.
+
+\paragraph{JAX implementation.}
+We implemented the solver in JAX: since PDLP is dominated by sparse
+matvecs and elementwise projection operations that vectorize cleanly
+under XLA, we use \texttt{jax.jit} and \texttt{lax.scan} over the inner
+iteration to batch ${\sim}10^5$ iterations onto the GPU/TPU at a few
+microseconds each. This also enables JIT-fusion of the Ruiz
+preconditioning loop into a single kernel.
+
+\paragraph{Custom variable-metric solver.}
+Even with JAX, the vanilla PDLP loop did not converge on the LLM LPs, since the duality gap oscillated and the standard symmetric-restart
+heuristic kept overshooting. 
+To solve this, we introduce a custom
+\emph{variable-metric one-sided rescue} (\texttt{vm-one-armed-rescue}):
+an asymmetric, one-sided restart-Halpern PDHG with a diagonal variable
+metric especially designed for V1's large-scale systems-shaped LPs.
+The key hyperparameters are:
+\begin{itemize}[leftmargin=1.5em, itemsep=1pt]
+    \item \texttt{num\_ruiz\_iterations} $= 16$ 
+    \item \texttt{restart\_window} $= 200$ 
+    \item \texttt{step\_size\_limit\_coef} $= 1.18$
+    \item \texttt{growth} $= 0.55$,\quad \texttt{decay} $= 0.32$
+    \item \texttt{primal\_weight\_smooth} $= 0.32$
+    \item \texttt{restart\_sufficient} $= 0.40$,\quad
+          \texttt{restart\_necessary} $= 0.94$
+    \item \texttt{beta\_artificial} $= 0.35$
+\end{itemize}
+
+We additionally incorporate feasibility-polishing features triggered at
+a relative gap of $0.22$, with a 55\,k-iteration polish cap and a
+wider 200-iteration restart window, and a custom presolve stack:
+\begin{center}
+\texttt{drop\_zeros}
+$\to$ \texttt{singleton\_rows}
+$\to$ \texttt{fixed\_vars}
+$\to$ \texttt{empty\_rows}
+$\to$ \texttt{geomean\_ruiz}
+$\to$ \texttt{objective\_scale}
+\end{center}
+which removes diagonal singletons and equilibrates the coefficient
+matrix before the first PDHG iterate.
+
+\paragraph{Results.}
+This enables both the primal and dual convergence of the LLM LPs within ${\sim}80$--$200$\,s at feasibility tolerance $2.5\times10^{-7}$, reaching within 0.1--1\% of
+the HiGHS optimum (the rounding gap is bounded and reported). By
+contrast, stock PDLP and off-the-shelf HiGHS either time out,
+factorize into NaNs, or polish to objectives $5$--$12\times$ worse
+without achieving dual convergence.

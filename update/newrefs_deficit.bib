@@ -1,0 +1,53 @@
+% New references for the deficit-attribution / lever-sensitivity appendix
+% (update/deficit_sensitivity.tex). Merge into ref.bib or \bibliography both.
+
+@inproceedings{jouppi2017datacenter,
+  title     = {In-Datacenter Performance Analysis of a Tensor Processing Unit},
+  author    = {Jouppi, Norman P. and Young, Cliff and Patil, Nishant and
+               Patterson, David and Agrawal, Gaurav and Bajwa, Raminder and
+               Bates, Sarah and Bhatia, Suresh and Boden, Nan and Borchers, Al
+               and others},
+  booktitle = {Proceedings of the 44th Annual International Symposium on
+               Computer Architecture (ISCA)},
+  pages     = {1--12},
+  year      = {2017},
+  publisher = {ACM},
+  doi       = {10.1145/3079856.3080246},
+  note      = {Reports mean useful-MAC utilization and weight-fetch stall
+               fractions for a production matrix-unit accelerator; also shows
+               that enlarging the matrix unit can degrade delivered
+               performance (sub-linear return on added MACs).}
+}
+
+@inproceedings{shao2019simba,
+  title     = {Simba: Scaling Deep-Learning Inference with Multi-Chip-Module-Based
+               Architecture},
+  author    = {Shao, Yakun Sophia and Clemons, Jason and Venkatesan, Rangharajan
+               and Zimmer, Brian and Fojtik, Matthew and Jiang, Nan and Keller, Ben
+               and Klinefelter, Alicia and Pinckney, Nathaniel and Raina, Priyanka
+               and Tell, Stephen G. and Zhang, Yanqing and Dally, William J. and
+               Emer, Joel and Gray, C. Thomas and Khailany, Brucek and
+               Keckler, Stephen W.},
+  booktitle = {Proceedings of the 52nd Annual IEEE/ACM International Symposium on
+               Microarchitecture (MICRO)},
+  pages     = {14--27},
+  year      = {2019},
+  publisher = {ACM},
+  doi       = {10.1145/3352460.3358302},
+  note      = {Network-on-package / network-on-chip provisioning (radix, link
+               count, hierarchical crossbar+mesh) for multi-chiplet DNN inference.}
+}
+
+@inproceedings{huang2024mindthegap,
+  title     = {Mind the Gap: Attainable Data Movement and Operational Intensity
+               Bounds for Tensor Algorithms},
+  author    = {Huang, Qijing and Tsai, Po-An and Emer, Joel S. and
+               Parashar, Angshuman},
+  booktitle = {Proceedings of the 51st Annual International Symposium on
+               Computer Architecture (ISCA)},
+  year      = {2024},
+  publisher = {IEEE},
+  note      = {Orojenesis: mapping-independent attainable off-chip traffic and
+               operational-intensity bounds for tensor programs; used here to
+               certify the compulsory-DRAM (attainable) floor.}
+}
