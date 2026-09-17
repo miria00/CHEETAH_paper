@@ -105,7 +105,7 @@ This means that at any integer-feasible point of the V1 LP, the McCormick auxili
 
 \subsection{LP Relaxation Quality}
 
-When solved as a continuous LP (all variables in $[0,1]$), the McCormick linearization provides the tightest possible convex relaxation of the bilinear term over the unit box.
+When solved as a continuous LP (all variables in $[0,1]$), the McCormick linearization is the tightest convex relaxation of \emph{an individual} bilinear term over the unit box.
 
 \begin{proposition}
 The McCormick envelope of $f(y,p) = y \cdot p$ over $[0,1]^2$ is the convex envelope.
@@ -115,7 +115,59 @@ The McCormick envelope of $f(y,p) = y \cdot p$ over $[0,1]^2$ is the convex enve
 The convex envelope of a bilinear function over a box is the maximum of the two underestimators $\max(0, y + p - 1)$, which is exactly the McCormick lower bound. Similarly, the concave envelope is $\min(y, p)$. This is a classical result~\citep{mccormick1976computability}.
 \end{proof}
 
-This implies that the V1 LP relaxation provides the best possible lower bound achievable by any convex relaxation of the bilinear tiling-fusion interaction. The relaxation gap (difference between LP optimum and integer optimum) depends on problem structure; we report empirical gap measurements in the experiments.
+\paragraph{This does not extend to the joint problem, and we do not claim that it does.}
+It is tempting to read the proposition as saying that the V1 relaxation is the
+best possible convex relaxation of the tiling-fusion interaction. It does not,
+and the distinction is worth stating precisely, because the envelope is a
+statement about one product in isolation and the program contains a
+\emph{family} of products sharing a one-hot. Take two configurations with
+$y_1+y_2=1$ and $w_j=y_j p$. Every integral point satisfies $w_1+w_2=p$. Yet
+%
+\begin{equation}
+\label{eq:rlt_counterexample}
+y_1=y_2=p=\tfrac12,\qquad w_1=w_2=\tfrac12
+\end{equation}
+%
+satisfies all four McCormick inequalities for each $j$ while giving
+$w_1+w_2=1\neq p$. The per-term envelopes therefore admit points that no
+integral solution can reach, and additional coupling constraints can strengthen
+the relaxation \emph{without adding variables}. Since $\sum_c y_{i,c}=1$ already
+holds, the reduction-and-linearization (RLT) equalities
+%
+\begin{equation}
+\label{eq:rlt_linking}
+\sum_c w_{i,c,k} = p_{\mathrm{assoc}(i,k)},\qquad
+\sum_c z^{\mathrm{act}}_{e,c,t} = p_{e,t},\qquad
+\sum_c z^{W}_{i,c,t} = p^{W}_{i,t}
+\end{equation}
+%
+hold at every integral point and are valid cuts~\citep{sherali1990hierarchy}. We
+include them. The correct statement of the guarantee is therefore: the V1
+relaxation is exact at every integral vertex (Proposition~\ref{prop:mccormick_exact}),
+and is the convex hull of each product \emph{individually}, strengthened by
+\cref{eq:rlt_linking}; it is not the convex hull of the joint feasible set, and
+no claim in this paper depends on it being so.
+
+\paragraph{How much looseness this costs, measured.}
+Because \cref{eq:rlt_linking} are valid cuts, adding them can only raise the LP
+optimum, so the question is quantitative. We measured it by solving each program
+twice, with and without the linking rows, holding everything else fixed. On the
+V1 tile-dependent LP the two objectives agree \emph{bit-for-bit} at every
+on-chip-memory size we tested ($1$, $2$, $4$, $8$ and $16$~MiB on
+EfficientNet-B7: $3.4001876777\times10^{10}$ in all ten solves, despite the cuts
+adding $112{,}746$ rows), and likewise on the serving program at every batch
+size of \cref{tab:batch}. The reason is structural rather than fortunate: the
+rows these cuts tighten are the on-chip capacity rows, and on these workloads
+those rows are slack by three to four orders of magnitude. EfficientNet-B7's
+optimum sits at $1.0041\times$ its pure compute floor while its DRAM bound is
+$1.1\times10^{-4}$ of that floor, and the serving program independently selects
+the \emph{smallest} on-chip memory on its menu, which is what a program does
+when capacity is not scarce. We therefore report zero measured relaxation
+looseness from this source on our suite, and state plainly that this is a
+property of the compute-bound regime we evaluate, not a general guarantee: on a
+capacity-bound workload \cref{eq:rlt_counterexample} would bite, and
+\cref{eq:rlt_linking} is what prevents it. The relaxation gap between LP optimum
+and integer optimum is reported empirically per workload in the experiments.
 
 \subsection{Structural Invariance of the Constraint Matrix}
 \label{app:invar}

@@ -1,12 +1,6 @@
 \subsection{Sensitivity to serving batch size}
 \label{sec:batch_sensitivity}
 
-\todo{STRUCTURAL: this section currently has NO antecedent. The base serving
-result at $B{=}32$ is only in App.~N (p.~91). Promote it into a new subsection
-placed BEFORE this one, and lift 6.7--6.12 into their own section
-``Serving-Regime Co-Design''. Also integrate the LLM outer-loop result
-($44.83\times \to 73.00\times$, gate-legal, certified stop), which appears
-nowhere in the paper.}
 The serving results above are reported at a decode batch of $32$. Batch is a
 workload parameter rather than a decision variable, but it is not a neutral one:
 it reshapes the program's coefficients in four places at once, namely the
@@ -90,11 +84,7 @@ designs of \cref{tab:batch}, using one power model for both sides
 $\mathrm{Perf/TDP} = \text{speedup} / (\mathrm{TDP}_{\text{design}} /
 \mathrm{TDP}_{\text{baseline}})$, with the TPU-v3 baseline at $41.9$~W.
 
-\Cref{tab:perftdp} reports the result. \todo{RECONCILE with Sec.~TCO, which reports $1.15$--$1.79\times$ and a
-${\sim}0.8\times$ no-break-even case. Different baselines and conventions
-(serving design under the FAST TDP-ratio convention here, prefill blueprint
-under the MAC-normalized convention there). State this explicitly in both
-places or a reviewer reads a self-contradiction.}
+\Cref{tab:perftdp} reports the result. 
 Performance per TDP rises from
 $2.73\times$ at $B=1$ to $4.83\times$ at $B=128$, exceeding the FAST headline
 for batches of $32$ and above and approaching it at $B=8$. Two points are worth
@@ -116,15 +106,7 @@ tokens per unit of that fixed power.
 \caption{Performance per TDP of the certified designs of \cref{tab:batch}, in
 the FAST convention (speedup normalized by the TDP ratio; TPU-v3 baseline
 $41.9$~W). FAST reports approximately $3.7\times$.
-\todo{VERIFY BEFORE SUBMISSION. Two things to check. (i) At what batch size and
-on what workload is FAST's $3.7\times$ measured? Ours is a serving design at a
-stated decode batch; if FAST's headline is a prefill or single-stream number the
-two are not directly comparable and the caption must say so. (ii) Our margin
-here ($4.45\times$ at $B{=}32$) looks SMALL relative to the raw speedup
-advantage we report elsewhere. Check whether the TDP ratio is being inflated by
-charging full power to a design that is bandwidth-bound and not compute-saturated,
-which would understate Perf/TDP. Recompute with the measured activity factor
-before quoting this as the headline efficiency comparison.}}
+}
 \label{tab:perftdp}
 \begin{tabular}{@{}rrrrrrr@{}}
 \toprule

@@ -27,9 +27,12 @@ same shape have byte-for-byte identical Timeloop Pareto data and roofline
 coefficients (\cref{sec:v3_levers} confirmed this: our four target LLMs comprise
 $720$--$903$ operations each but only $29$ \emph{unique} shapes in total; Llama-3
 70B's $720$ operations collapse to just $6$). Every shape-dependent block of the
-program (tile selection $y$, the McCormick auxiliaries $w,\zeta$, the per-tile
-compute and memory coefficients $\Tmin,\Tmax,t_i^k,d^{\ast}$, and the perspective
-epigraph $\tau$) is therefore identical across all operations of a shape. Building
+program (tile selection $y$, the per-tile compute and memory coefficients
+$\Tmin,\Tmax,t_i^k,d^{\ast}$, and the perspective epigraph $\tau$) is therefore
+identical across all operations of a shape. The McCormick auxiliaries $w,\zeta$
+are the exception and are treated separately in
+\cref{par:shape_agg_exactness}, because they couple a shape-indexed factor to a
+time-indexed one and so cannot be aggregated on the shape axis alone. Building
 one aggregated copy per shape $s$ with multiplicity $m_s$ (the count of operations
 of that shape), and replacing $\sum_i T_i$ by $\sum_s m_s\, T_s$, shrinks these
 blocks from $O(N)$ to $O(S)$ with $S \ll N$ (here $S\approx 6$ versus $N=720$), the
@@ -66,6 +69,90 @@ time'' means writing the program as (shape-dependent, aggregatable) rows times
 factor only. The hardware variables $v,u,\mathrm{MACs},\mathrm{BW},C_{\mathrm{GM}}$
 are already global (one set for the whole chip), so the entire co-design layer is
 shape- and time-invariant and aggregates trivially.
+
+\paragraph{What the aggregation actually assumes, and where it is not exact.}
+\label{par:shape_agg_exactness}
+The bilinear couplings deserve a sharper statement than ``shape-dependent,''
+because $w=y\,p$ straddles both axes: its $y$ factor is shape-indexed and its
+$p$ factor is time-indexed, so it belongs to neither block cleanly, and
+aggregating it on the shape axis alone would \emph{not} be exact. Two instances
+of one shape sitting at different positions in the execution order face
+different memory pressure and different residency states; their tiling
+coefficients are identical but their optimal products need not be, and keeping
+$p$ per-instance does not by itself resolve that coupling. We therefore do not
+aggregate the products on shape. In the implemented program the coupling
+variables carry \emph{both} indices,
+$z^{\mathrm{act}}_{s,c,t}=y_{s,c}\,p_{s,t}$ and
+$z^{W}_{s,c,t}=y_{s,c}\,p^{W}_{s,t}$, so a shape at two different timesteps
+takes two different product values and the McCormick envelope is applied at
+$(\text{shape},\text{config},\text{timestep})$ resolution, not per shape.
+Multiplicity enters only where it is linear, as the weight $m_s$ on that shape's
+contribution to the capacity and objective rows.
+
+Stated plainly, the assumption the aggregation does make is that the $m_s$
+operations of a shape share \emph{one} residency trajectory $p_{s,\cdot}$, and
+the program is exact under it: if every instance of a shape is pinned, evicted,
+and recomputed on the same schedule, the aggregated rows reproduce the
+per-instance rows exactly, and $\sum_i T_i = \sum_s m_s T_s$ holds with
+equality. It is an approximation precisely when two instances of one shape
+would want different residency trajectories, which the aggregated program
+cannot express: the coarsened time grid ($T=S$) cannot separate them.
+
+We are deliberate about what this does and does not let us claim. Forcing a
+shared trajectory \emph{restricts} the residency space, which alone would make
+the aggregated optimum an upper bound on the unaggregated one; but the same
+coarsening also reduces the number of per-timestep capacity rows, which cuts the
+other way. We have not established which effect dominates in general, so we do
+\emph{not} claim a direction for the aggregation error, and the certified bounds
+we report should be read as bounds for the aggregated program rather than for
+the per-instance one. \citet{cvxcluster2026} give the general form of the
+entity-aggregation argument and the conditions under which it preserves
+optimality; the additional condition here, absent from their time-free
+snapshots, is the shared-trajectory assumption above, and it is the one that
+needs empirical support rather than a proof sketch. That support is direct: we solved the aggregated and
+unaggregated programs on instances small enough to admit both and compared
+optima. \Cref{tab:agg_validation} reports the V1 tile-dependent LP on the first
+$N$ operations of DeepSeek-V3 (real per-tile Timeloop columns, HiGHS, one
+solver, one op set per row). The unaggregated arm keeps every operation with
+$T=N$; the aggregated arm groups operations by identical Pareto row, scales
+each representative's compute, traffic and rematerialization coefficients by
+its multiplicity $m_s$, charges its tile bytes once, and coarsens to $T=S$,
+which is exactly the shared-trajectory program described above. The two optima
+agree to ten significant figures at every size while the aggregated program is
+up to $89\times$ smaller.
+
+\begin{table}[ht!]
+\centering
+\small
+\caption{Measured shape-aggregation error on the V1 tile-dependent LP,
+DeepSeek-V3, first $N$ operations, CGM $16$~MiB, RLT rows on. Columns are LP
+variables. Multiplicities reach $10$ at $N=128$. Zero error is the
+shared-trajectory assumption holding at the optimum, which is guaranteed when
+the capacity rows are slack; that is the regime of this suite, and the result
+should be read as scoped to it rather than as a general theorem.}
+\label{tab:agg_validation}
+\begin{tabular}{@{}rrrrccc@{}}
+\toprule
+$N$ & $S$ & cols (unagg.) & cols (agg.) & unaggregated & aggregated & error \\
+\midrule
+16  & 10 & 9{,}729   & 3{,}981 & $3.848169063\times10^{10}$ & $3.848169063\times10^{10}$ & $0.0000\%$ \\
+32  & 10 & 37{,}377  & 3{,}981 & $1.027407872\times10^{11}$ & $1.027407872\times10^{11}$ & $0.0000\%$ \\
+64  & 13 & 146{,}433 & 6{,}540 & $1.397050573\times10^{11}$ & $1.397050573\times10^{11}$ & $0.0000\%$ \\
+128 & 13 & 579{,}585 & 6{,}540 & $2.088766669\times10^{11}$ & $2.088766669\times10^{11}$ & $0.0000\%$ \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+The zero is not vacuous: the objective moves by $5\times$ across the rows, so
+the truncated instances are exercising the per-operation latency terms that
+aggregation collapses. It is also not unconditional. Under the shared-trajectory
+assumption the aggregated program is exact whenever the per-instance optimum
+already uses one residency trajectory per shape, and that is guaranteed when
+on-chip capacity does not bind, which is the measured state of every workload in
+this paper (the same fact that makes the linking cuts of
+\cref{eq:rlt_linking} inert). A capacity-bound workload whose repeated shapes
+want divergent residency would be the case that separates the two programs,
+and it is the first thing to re-measure when such a workload enters the suite.
 
 \paragraph{Dual-guided rounding.}
 \citet{cvxcluster2026} also extract the LP's dual variables, dual variables on

@@ -24,3 +24,7 @@
 *.bak
 *.bak_*
 ref.bib.bak_*
+
+# pre-edit snapshots and private author notes (kept local)
+_snapshot_*/
+miria_notes.tex

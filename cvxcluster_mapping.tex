@@ -379,3 +379,187 @@ tolerates the resulting conditioning.
 This is not a hypothetical. It is the structure that produced the reported
 design, which buys $3200$\,GB/s, the most the pin-count row permits, and selects
 W4 with a $4$-bit KV cache: both halves of the bottom-right cell.
+
+% ---------------------------------------------------------------------------
+\section{Where Each Workload Family Slows Down, and the Local Sacrifice That Wins}
+\label{app:family_bottlenecks}
+
+The formulation earns its keep only where a \emph{locally} worse decision is
+\emph{globally} better, because that is precisely the trade a sequential
+pipeline cannot represent: a mapper that has already committed to the
+per-operation optimum has priced the local choice and thrown away the coupling
+that would have paid for it. \Cref{tab:family_bottlenecks} names, for each
+workload family in our suite, where inference actually slows down and which
+locally costly choice the joint program is able to buy in exchange. Read it as
+the qualitative statement of which term in the objective the coupling is
+expected to move; the measured per-family decompositions are in
+\cref{app:deficit,app:blueprints}.
+
+\begin{table}[ht!]
+\centering
+\small
+\caption{Per-family inference bottlenecks and the locally costly choice that can
+win globally. Each row is an instance of the same structural claim: the
+per-operation optimum and the end-to-end optimum disagree, and the size of the
+disagreement is what the joint program recovers. The EfficientNet-B7 figure is
+FAST's own profile on TPU-v3~\citep{zhang_fast}, where depthwise operations
+account for $5\%$ of FLOPs but $65.3\%$ of runtime, which is the clearest
+published case of a bottleneck that FLOP-weighted reasoning cannot see.}
+\label{tab:family_bottlenecks}
+\begin{tabularx}{\linewidth}{@{}p{0.17\linewidth}XX@{}}
+\toprule
+\textbf{Family} & \textbf{Where inference slows down} &
+\textbf{Locally costly choice that can win globally} \\
+\midrule
+Llama-1 13B/65B, Llama-3 70B
+& Prefill stresses projection/FFN GEMMs and attention. Small-batch decode often
+stresses weight bandwidth; longer contexts increase KV traffic and attention
+costs.
+& A smaller attention or FFN tile preserves weights or KV for subsequent
+operations. Splitting attention across the KV history adds reduction work but
+can improve parallelism. \\
+\addlinespace
+EfficientNet B1--B7
+& Depthwise utilization, expanded activations, SE reductions, and layout/halo
+traffic. FAST's historical B7 profile found depthwise operations were only $5\%$
+of FLOPs but $65.3\%$ of runtime on TPU-v3.
+& A slower compact tile preserves an expanded feature or residual, avoiding a
+spill and reload. \\
+\addlinespace
+SD1.5 UNet
+& Convolutions, attention, and encoder skips that remain live until much later
+decoder operations. Complete image generation repeats the denoiser.
+& Smaller intervening tiles preserve a valuable skip; legal recomputation can
+release memory for something more expensive to reload. \\
+\addlinespace
+DeepSeek-V3 MoE
+& Expert-weight movement, small or uneven expert GEMMs, MLA attention, and, when
+distributed, dispatch/combine communication.
+& Compact mappings preserve experts or KV; prefetching and grouping incur costs
+now to avoid larger later stalls. \\
+\bottomrule
+\end{tabularx}
+\end{table}
+
+Two properties of the table are worth making explicit. First, every right-hand
+entry is a decision the V1 program can express as a column and a sequential
+pipeline cannot, because in each case the locally costly choice is only
+justified by a constraint that binds at a \emph{different} operation or a
+\emph{later} timestep: the tile that looks slow in isolation is paying for a
+residency that a downstream operation will consume. Second, the families differ
+in \emph{which} resource the sacrifice buys, on-chip capacity for EfficientNet
+and SD1.5, memory bandwidth for the Llamas and DeepSeek-V3, which is why the
+same formulation produces qualitatively different chips across the suite rather
+than one design rescaled.
+
+% ---------------------------------------------------------------------------
+\section{A Minimal Certified Example of Hardware/Software Non-Separability}
+\label{app:synergy_example}
+
+\Cref{tab:family_bottlenecks} asserts that a locally costly choice can win
+globally. This appendix gives the smallest instance we know of in which that
+claim is not only true but \emph{certified}, and in which the failure mode it
+warns against, alternating hardware-only and software-only optimization, can be
+exhibited exactly. Every quantity is a synthetic normalized unit; this is a
+teaching model with a closed form, not a chip, a workload, or a measurement.
+
+\paragraph{Setting.}
+Two serial invocations of one kernel share an immutable weight. Two functionally
+equivalent implementations are admitted: a \emph{fast} kernel (compute $1.0$,
+scratch $40$) and a \emph{compact} kernel (compute $1.2$, scratch $20$). The
+weight occupies $20$ SRAM units if retained between invocations; its first-use
+load costs $10$ traffic units and a second-use miss costs $10$ more. A chip of
+total area $100$ is divided continuously among compute $m$, bandwidth $b$, and
+SRAM $S$, with $S$ at least $40$ so that both kernels fit every admitted chip.
+For a branch with compute demand $C$, traffic $Q$, and required SRAM $S$, the
+latency $C/m + Q/b$ subject to $m+b=100-S$ has the closed-form optimum
+%
+\begin{equation}
+\label{eq:synergy_closed_form}
+T^\star=\frac{(\sqrt{C}+\sqrt{Q})^{2}}{100-S},\qquad
+m^\star=(100-S)\,\frac{\sqrt{C}}{\sqrt{C}+\sqrt{Q}} .
+\end{equation}
+
+\paragraph{The four moves.}
+Eight branches (two kernels per invocation, retain or not) are all covered by
+\cref{eq:synergy_closed_form}. \Cref{tab:synergy_moves} records the four moves an
+optimizer can make from the locally natural starting point.
+
+\begin{table}[ht!]
+\centering
+\small
+\caption{Alternating optimization stalls; the joint move does not. Latencies in
+normalized units from \cref{eq:synergy_closed_form}. The fast kernel is the
+per-kernel latency optimum on any chip with adequate SRAM, which is what a
+per-operation mapper selects; ``locally fastest'' is that mapper's choice, not
+a claim that it is globally wise.}
+\label{tab:synergy_moves}
+\begin{tabular}{@{}lccc@{}}
+\toprule
+\textbf{Move} & \textbf{Kernel} & \textbf{Chip} & \textbf{Latency} \\
+\midrule
+Chip optimized for the locally fastest kernel & fast & optimal for fast & $0.5236$ \\
+Change software only, on that chip & compact & unchanged & $0.5560$ \\
+Re-optimize hardware only, keeping the fast kernel & fast & re-optimized & $0.5236$ \\
+\textbf{Change hardware and software jointly} & compact & re-optimized & $\mathbf{0.3700}$ \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+Both single-axis moves are stuck: the fast-kernel chip is already optimal for
+the fast kernel, and on that chip the compact kernel is strictly worse. Only the
+joint move improves, by $1.415\times$, and the mechanism is exactly the one
+\cref{tab:family_bottlenecks} describes for EfficientNet and SD1.5: the compact
+kernel needs $20$ fewer SRAM units, which lets the weight be retained
+\emph{within} the $40$-unit floor, and the released area is re-spent on compute
+and bandwidth ($m$ from $12.36$ to $19.73$, $b$ from $27.64$ to $40.27$). The
+slower kernel is worth choosing only after the chip has been resized to exploit
+it, and the chip is worth resizing only if the slower kernel will be chosen.
+Neither decision is justified by the other's status quo, which is why a
+sequential pipeline cannot reach the point.
+
+\paragraph{The result is robust, not a knife edge.}
+The $40$-unit SRAM floor coincides with the fast kernel's scratch, so the
+compact kernel's retention is exactly free at that value; one might suspect the
+effect is tuned. It is not. Sweeping the floor over its admissible range, the
+joint move wins throughout:
+%
+\begin{center}
+\small
+\begin{tabular}{@{}lcccc@{}}
+\toprule
+SRAM floor & $40$ (shipped) & $45$ & $50$ & $30$--$35$ \\
+\midrule
+Best fast-kernel design & $0.5236$ & $0.5236$ & $0.5236$ & $0.5236$ \\
+Joint (compact $+$ retain) & $0.3700$ & $0.4036$ & $0.4440$ & $0.3700$ \\
+Ratio & $1.415$ & $1.297$ & $1.179$ & $1.415$ \\
+\bottomrule
+\end{tabular}
+\end{center}
+%
+Below $40$ the fast kernel no longer fits in isolation, so the comparator
+changes meaning; above it the advantage shrinks smoothly and never vanishes.
+
+\paragraph{The bound is a certificate, not a restatement.}
+Each branch is also solved as an LP in which $C/m$ and $Q/b$ are replaced by
+their supporting planes at $(m^\star,b^\star)$, and HiGHS returns exactly
+$T^\star$ for every branch. Because a tangent plane of a convex function is a
+global underestimator, that LP value is a valid lower bound on the branch
+optimum for \emph{any} linearization point; it equals the replayed latency at
+the linearization point only when that point is optimal. We verified this has
+teeth by perturbing the linearization point: at $\pm1\%$ the LP bound falls to
+$0.3664$ against a replay of $0.3700$, at $\pm10\%$ to $0.336$ against $0.372$,
+and equality is recovered only at $m^\star$. An LP whose optimum is attained at
+its own linearization point is the first-order optimality certificate for a
+convex program, so the eight branch optima are certified rather than assumed,
+and the $1.415\times$ is a gap between two certified values.
+
+\paragraph{What it does and does not show.}
+It shows that the objective is non-separable in hardware and software even in
+the simplest case with continuous ideal resources, and that this
+non-separability defeats coordinate-wise optimization. It does not model
+tiling, time-indexed residency, array parallelism limits, or any physical
+constraint, and its $1.415\times$ carries no information about DeepSeek-V3 or
+any chip; the measured per-family decompositions are in
+\cref{app:deficit,app:blueprints}. Its value is that the certified argument is
+short enough to check by hand.

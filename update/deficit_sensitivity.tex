@@ -199,6 +199,74 @@ blueprint objective (exact by construction); the other three use the
 \emph{independent} analytic chip solve and land within $1.4\%$.}
 \end{table}
 
+\paragraph{Is the provisioning factor physically usable?}
+A reader is entitled to ask whether $f_2$ is real parallelism or an artifact of
+a cost model in which compute time falls as $1/\mathrm{MACs}$ without bound. It
+is a fair question: an array can only speed an operation up as far as that
+operation supplies independent tiles to fill it, and a per-token decode GEMV
+supplies few. We measured the answer directly rather than argue it. For every
+event of DeepSeek-V3 we computed the \emph{saturating} MAC count
+$M_{\mathrm{sat}} = (\text{independent output tiles}) \times (\text{lanes per
+tile})$ under the same tile geometry the mapper uses, where independent tiles
+are row tiles times column tiles (k-tiles accumulate into one output and are
+not independent) times the number of GEMMs carrying work (expected active
+experts for routed FFNs). Beyond $M_{\mathrm{sat}}$ a chip has no more
+concurrent tiles to run for that event, and its compute time cannot keep
+falling. \Cref{tab:msat} gives the distribution in multiples of the TPU-v3
+array.
+
+\begin{table}[ht!]
+\centering
+\small
+\caption{Saturating MAC count per event, DeepSeek-V3, as a multiple of
+TPU-v3's $65{,}536$ MACs. Prefill events saturate three to four orders of
+magnitude above the largest chip in this paper ($24.4\times$), so the
+provisioning factor $f_2$ is physically usable parallelism at prefill. Decode
+events saturate at $9$--$14\times$ at the low end, which is where a bound on
+usable parallelism would bind, and only for chips beyond it.}
+\label{tab:msat}
+\begin{tabular}{@{}llrrr@{}}
+\toprule
+Regime & Phase & min & p10 & median \\
+\midrule
+$B{=}8$, ctx $4096$   & prefill & $3{,}584\times$  & $3{,}584\times$  & $16{,}384\times$ \\
+                      & decode  & $9\times$        & $14\times$       & $16\times$ \\
+$B{=}32$, ctx $4096$  & prefill & $14{,}336\times$ & $14{,}336\times$ & $65{,}536\times$ \\
+                      & decode  & $14\times$       & $14\times$       & $32\times$ \\
+$B{=}32$, ctx $512$   & prefill & $1{,}792\times$  & $1{,}792\times$  & $8{,}192\times$ \\
+                      & decode  & $14\times$       & $14\times$       & $32\times$ \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+Two things follow. First, at the prefill operating point of \cref{fig:speedup}
+the bound can never be active: a $4096$-token prefill GEMM supplies thousands
+of times more independent tiles than a $24.4\times$ chip can consume, so
+$f_2$ is not a modeling artifact and no correction to the headline is owed on
+this ground. We confirmed this empirically by adding the saturation bound to
+the sizing program as an explicit companion row (compute charged at
+$M_{\mathrm{sat}}$ in addition to the free $1/\mathrm{MACs}$ term, a valid
+restriction) and re-solving the joint sizing on the real model in three regimes:
+$B{=}8$, $G{=}4$; $B{=}32$, $G{=}16$ (the serving point of \cref{tab:batch});
+and a decode-weighted case ($B{=}32$, context $512$, MAC domain to $25\times$)
+whose unbounded optimum, $16.8\times$ TPU-v3, lies \emph{above} the decode
+saturation so that the bound is provably active on the low-parallelism decode
+events. In all three the chosen chip, the certified objective, and the lower
+bound were identical with and without the bound to ten significant figures
+(certified gaps $3\times10^{-5}$ to $4\times10^{-4}$). Where the bound is active
+it does not move the optimum because decode compute is not the binding term in
+a memory-bound decode; where compute binds, at prefill, the bound is never
+active. Second, the concern is legitimate exactly where the
+table says it is, in decode on chips beyond roughly $14\times$ TPU-v3, and it
+attaches to the serving results of \cref{sec:perf_tdp} rather than to the
+prefill headline; there, decode compute is rarely the binding term (decode is
+memory-bound at these batches, \cref{tab:batch}), which is why the correction is
+small even where it applies. Two caveats bound the claim: the geometry is the
+mapper's tile model, not a placed array, and the separate question of
+non-matrix work (softmax, normalization, routing) growing relative to matrix
+work as the array scales is not addressed by this bound and remains an open
+correction.
+
 \paragraph{Use only the two-factor form; do not multiply the full decision ladder.}
 It is tempting to read the software-ablation ladder (tile, placement, remat,
 datapath, datatype) as a chain of multiplicative factors and multiply them all.
