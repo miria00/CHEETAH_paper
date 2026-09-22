@@ -27,7 +27,7 @@ Shape (servers with identical config) & Unique op-shape (ops with identical dims
 Task multi-resource demand (CPU, mem, GPU) & Op demand on the three resources: compute (MACs), traffic (bytes/BW), on-chip capacity (CGM bytes) \\
 Bin / server capacity & CGM capacity per timestep, plus the compute roof and the bandwidth roof \\
 Binary assignment $x\in\{0,1\}$ & Discrete decisions: tile-config $y$, residency $p$, precision $q$, expert-pin $g$, spec-width $K$ \\
-Convex relaxation $x\in[0,1]$ & The LP/SOCP relaxation of the one-hots \\
+Convex relaxation $x\in[0,1]$ & The LP relaxation of the one-hots \\
 Anti-affinity as auxiliary capacity rows & Residency, capacity, and McCormick auxiliary constraints \\
 Dual variables (dual per resource-per-shape) & Lagrangian duals $\lambda_{\mathrm{CGM}},\lambda_{\mathrm{BW}},\lambda_{\mathrm{MAC}},\lambda_{\mathrm{HBM}},\lambda_{\mathrm{cache}},\lambda_{\mathrm{LD}}$ \\
 Net utility $=$ priority $-\sum_r \lambda_r\,\mathrm{demand}_r$ & Reduced cost of a candidate column, $\bar c_j = c_j - \sum_r \lambda_r\, a_{rj}$ \\
@@ -45,7 +45,7 @@ the CHEETAH co-design program.}
 The mapping's payoff is that it makes the LLM-guided outer loop
 (\cref{sec:llm_outer}) a \emph{dual-guided column generator}, exactly as
 \citet{cvxcluster2026} scores task placement. The loop is: (1) solve the inner
-SOCP and read the dual dual vector $\lambda=(\lambda_{\mathrm{CGM}},
+LP and read the dual vector $\lambda=(\lambda_{\mathrm{CGM}},
 \lambda_{\mathrm{BW}},\lambda_{\mathrm{MAC}},\dots)$ together with the reduced costs
 of the un-chosen columns; (2) the duals \emph{diagnose the bottleneck}, the
 largest $\lambda_r$ marks the scarcest resource, while $\lambda_r\approx0$ marks a
@@ -194,16 +194,21 @@ the clearest single illustration of why the decisions that matter here reduce or
 amortize traffic rather than add storage.
 
 \paragraph{What is solved, and by what.}
-The formulation is written as a second-order cone program because two hardware
-reciprocals are exact rotated cones. In practice we solve \emph{linear programs}:
-the bandwidth reciprocal is already an exact one-hot over a grid, and the
-remaining compute reciprocal is eliminated by fixing $v$ on a fine grid, which
-makes each grid point a pure LP. Those LPs are solved with HiGHS, which returns a
+The formulation is a linear program: bandwidth is a finite menu, so its
+reciprocal is an exact one-hot expression whose LP relaxation is a lower bound,
+and the compute reciprocal is bracketed by tangent and chord rows on a geometric
+grid (relative half-gap $10^{-3}$), so a single LP gives the certified lower bound and
+a second LP of identical sparsity, the chord LP, gives an achievable design once
+every menu selector is pinned to an integral value and the pinned solution
+passes the exact-lift check (with relaxed selectors the chord LP is neither
+bound). Those LPs are solved with HiGHS, which returns a
 certified vertex and lets us check every reported design against the constraint
-set independently. The Variable-Metric-One-Armed-Rescue solver is used where the
-LP is too large or too ill-conditioned for a simplex or interior-point method,
-namely the full-resolution instances with per-operation residency, and it agrees
-with HiGHS to $10^{-14}$ on the instances where both can run.
+set independently. The Variable-Metric-One-Armed-Rescue solver
+(\cref{sec:solver_vm}) is intended for the full-resolution instances with
+per-operation residency (${\sim}8.7$M rows); on the shape-aggregated instances,
+where both can run, it does not meet its own convergence test within its
+iteration budget (\cref{app:socp_conditioning}), so every bound reported here
+is HiGHS's (\todo{measured: CORGI-vs-HiGHS agreement per regime}).
 
 \begin{table}[h]
 \centering
@@ -369,12 +374,13 @@ precision is being chosen the bandwidth has already become a constant.
 \paragraph{What it costs.}
 Reading the row once more, $s^W \times u$ is a product of two decision variables.
 It is bilinear and therefore nonconvex, which is exactly why the formulation
-carries a McCormick envelope at that position, and why $u$ requires the rotated
-cone $\mathrm{BW_{eff}}\,u \ge \mathrm{BW_{ref}}$. The multiplicative gain in
-\cref{tab:worked_example} and the solver machinery of \cref{sec:solver_vm} are
-the same fact viewed from opposite sides: expressiveness bought with
-nonconvexity, and nonconvexity paid for with envelopes, cones, and a solver that
-tolerates the resulting conditioning.
+carries a hull disaggregation at that position, and why the product is written
+over the bandwidth menu, where it is exact at integral selectors. The
+multiplicative gain in \cref{tab:worked_example} and the solver machinery of
+\cref{sec:solver_vm} are the same fact viewed from opposite sides:
+expressiveness bought with disjunctions, and disjunctions paid for with hull
+copies, a menu enumeration, and a solver that tolerates the resulting size and
+conditioning.
 
 This is not a hypothetical. It is the structure that produced the reported
 design, which buys $3200$\,GB/s, the most the pin-count row permits, and selects

@@ -14,7 +14,7 @@ menus, the workload-derived quantities, and the solver grids. Status R
 means Real (measured or silicon-anchored), A means Assumed (a stated
 modeling choice), and D means Derived (computed from other tabulated
 constants). Source locations refer to the released code
-(\texttt{systems/feasibility\_checks.py} and the SOCP builders).}
+(\texttt{systems/feasibility\_checks.py} and the LP builders\footnote{The builder files keep their historical \texttt{deepseek\_socp\_*} names; the exported program is a pure LP.}).}
 
 % ================================================================
 \begin{table}[h]
@@ -39,7 +39,7 @@ $P_{\mathrm{cap}}$ (TDP cap) & 700 W & A & NVIDIA H100 SXM5 TDP is 700 W (vendor
 $\pi_{\mathrm{bit}}$ (DRAM access energy) & $4.0\times10^{-12}$ J/bit & A & HBM2 access energy roughly 3.9 pJ/bit (O'Connor et al., Fine-Grained DRAM, MICRO 2017) \\
 \bottomrule
 \end{tabular}
-\caption{Silicon cost model: area and power coefficients. Sources: \texttt{feasibility\_checks.py} lines 32--48 and the SOCP builders (\texttt{deepseek\_socp\_codesign.py} lines 341--350, \texttt{deepseek\_socp\_serving\_codesign.py} lines 147--152).}
+\caption{Silicon cost model: area and power coefficients. Sources: \texttt{feasibility\_checks.py} lines 32--48 and the LP builders (\texttt{deepseek\_socp\_codesign.py} lines 341--350, \texttt{deepseek\_socp\_serving\_codesign.py} lines 147--152).}
 \label{tab:coeff_cost_model}
 \end{table}
 

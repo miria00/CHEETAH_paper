@@ -1,41 +1,95 @@
-\section{Conditioning of the Comprehensive Program: The Case for Variable-Metric Rescaling}
+\section{Conditioning of the comprehensive LP and what it does and does not demand of the solver}
 \label{app:socp_conditioning}
 
-\emph{This appendix records a preliminary numerical finding, noted here for further
-discussion and to motivate the solver of Section~\ref{sec:solver_vm} as a
-contribution in its own right.}
+\emph{This appendix records a numerical finding, noted here for further
+discussion and to motivate the equilibration inside the solver of
+Section~\ref{sec:solver_vm}; it also records, from the same measurements, which
+solver actually certifies the bounds reported in this paper.}
 
 Assembling the comprehensive CHEETAH-V1 program (\cref{app:master_v3}) as a single
-monolithic conic program for DeepSeek-V3 -- with all decisions as decision variables
-and the hardware reciprocals as exact rotated second-order cones -- yields a
-compact but severely ill-conditioned instance ($11{,}599$ variables, $32{,}582$
-inequality rows, two exact SOC cones, and the McCormick envelopes for the genuine
-bilinears). In natural units the coefficient dynamic range spans roughly
-$3\times10^{27}$, dominated by the big-$M$ constants ($\sim\!10^{18}$) in the
-indicator and capacity rows that link the discrete residency and one-hot selections
-to the continuous schedule.
+monolithic linear program for DeepSeek-V3, with all decisions as decision
+variables, the hardware reciprocals as tangent and chord rows, bandwidth as a
+one-hot menu, and every selector-times-quantity product in convex-hull form,
+yields a compact but ill-conditioned instance
+($6{,}815$ variables, $510$ equality and $22{,}511$ inequality rows, plus
+$29$ to $89$ tangent or $88$ chord rows for the compute reciprocal, so
+$23{,}050$ to $23{,}110$ rows and about $58{,}600$ nonzeros per exported
+instance; the earlier conic form of the same program had $11{,}599$ variables
+and $32{,}582$ inequality rows). In natural units the coefficient dynamic range of the earlier
+form spanned roughly $3\times10^{27}$, dominated by the big-$M$ constants
+($\sim\!10^{18}$) in the indicator and capacity rows that linked the discrete
+residency and one-hot selections to the continuous schedule. The hull
+reformulation removes those constants entirely, and an exact diagonal unit
+rescaling (latency in units of $10^{9}$ cycles at the $1$\,GHz convention,
+one cycle per nanosecond; traffic in units of $10^{6}$
+bytes; the optimum is unchanged) brings the per-row-family coefficient
+range to at most $8.8\times10^{6}$ (the energy-bytes equality family; the
+next largest, $4.2\times10^{6}$, is the box family of the MACs-times-DVFS
+hull), against a design limit of $10^{8}$. The range that remains is
+intrinsic: the tangent and
+chord rows on $1/m$ span eight octaves of $m$, so their coefficients span the
+same magnitudes the reciprocal itself does.
 
-At this conditioning, \emph{off-the-shelf conic solvers do not solve the program.}
-An interior-point conic solver (Clarabel) reports a spurious \texttt{unbounded}
-status; a second interior-point solver (ECOS) raises a numerical exception; and a
-first-order solver (SCS) returns bound-violating iterates (for example a negative
-provisioned bandwidth) even after $10^5$ iterations. A simple \emph{exact} diagonal
-unit rescaling -- expressing latency in units of $10^{9}$ cycles and traffic in
-units of $10^{6}$ bytes, which leaves the optimum unchanged -- compresses the
-dynamic range to $\sim\!4.5\times10^{15}$ and restores solvability: Clarabel then
-returns an \texttt{optimal} solution in about $0.6$ seconds. Even after rescaling
-the program remains \emph{stiff}: the interior-point method intermittently stalls at
-suboptimal points that it nonetheless flags \texttt{optimal}, so a multi-start (a
-mild perturbation of the compute floor) is required to certify the true optimum.
+\emph{Historical note.} The conic form of this program (exact rotated cones for
+the two reciprocals) could not be solved by stock conic solvers in natural
+units: an interior-point conic solver (Clarabel) reported a spurious
+\texttt{unbounded} status; a second interior-point solver (ECOS) raised a
+numerical exception; and a first-order solver (SCS) returned bound-violating
+iterates (for example a negative provisioned bandwidth) even after $10^{5}$
+iterations. After the unit rescaling Clarabel returned an \texttt{optimal}
+solution in about $0.6$ seconds, but the instance remained \emph{stiff}: the
+interior-point method intermittently stalled at suboptimal points that it
+nonetheless flagged \texttt{optimal}, so a multi-start was required. That
+stiffness is what motivated the linear reformulation. The stiffness and the
+failure of stock solvers are statements about that historical conic form and,
+by the same coefficient-range argument, about the un-aggregated full-resolution
+instance (${\sim}8.7$M rows for the per-operation build,
+\cref{app:lp_provenance}), on which no simplex result is available
+(\todo{measured: CORGI and HiGHS on the full-resolution instance}); they are
+not statements about the shape-aggregated LP that produces every bound in this
+paper.
 
-This is precisely the regime that the VM-One-Armed-Rescue solver of
-Section~\ref{sec:solver_vm} is designed for: a restarted primal-dual hybrid gradient
-method with a \emph{diagonal variable-metric rescaling} and a one-sided rescue
-restart. The finding above is direct evidence that the comprehensive co-design
-program, once every decision and the hardware reciprocals are folded in, is not
-reliably solvable by stock conic solvers without such rescaling and restart
-machinery. We view this as strengthening the case for VM-One-Armed-Rescue as a
-contribution: the more expressive the co-design program becomes, the more its
-conditioning, rather than its size, is the binding obstacle, and the more a
-metric-aware first-order solver is required to make it tractable. A full
-solver-versus-solver comparison at this scale is left as immediate future work.
+\paragraph{What is measured on the shape-aggregated LP.}
+On the $67$ exported serving instances ($32$ pinned bandwidth-times-decode-precision
+branches, each as an outer and a chord LP, plus the relaxed root pair and one
+diagnostic) HiGHS dual simplex returns an optimal vertex on every one in about
+$0.05$ seconds ($311$ iterations on the relaxed root). CORGI, our restarted
+primal-dual hybrid gradient method with a \emph{diagonal variable-metric
+rescaling} and a one-sided rescue restart (Section~\ref{sec:solver_vm}; $200{,}000$
+iterations, about $35$ seconds per instance on an RTX 5090), converged on none
+of them: on the fully relaxed root its objective stops $1.8$ to $2.7$ times above
+the optimum and its dual bound is negative, and on the $64$ pinned branch LPs
+its relative objective error against HiGHS ranges from $3.7\times10^{-3}$ to
+$18.5$ (median $3.4$). Every bound in this paper is therefore taken from HiGHS.
+The lower bound we report is the safe dual bound of the outer (tangent) LP (the
+larger of the root bound and the minimum over the enumerated selector
+branches), computed from the HiGHS dual on the identical exported instance with
+the duals of one-sided rows clipped to their admissible sign, and the
+integrality gap is reported separately for every pinned menu branch, since
+tangent refinement cannot close it.
+
+The cause is measured, not conjectured, and it is degeneracy rather than
+conditioning. At the HiGHS optimum of the relaxed root only $122$ of the
+$6{,}815$ columns are basic, $5{,}971$ non-basic columns have zero reduced
+cost, $17{,}430$ basic rows are tight, and $14$ selector columns in $6$ of the
+$25$ one-hot sets are fractional; three simplex seeds, an interior-point solve,
+and $10^{-6}$ cost perturbations all return the same objective (to $10^{-15}$)
+at points that differ by $81\%$ in relative norm. The optimal face has
+dimension in the thousands, and a first-order method has no mechanism to select
+a point on it. The same non-convergence was recorded on the earlier
+$20$M-variable menu LP, so it is a property of relaxed one-hot programs rather
+than of size. (The GPU run is also not deterministic from run to run, and the
+$10^{30}$ row-bound sentinels of the export leak into CORGI's reported dual
+objective, so no per-run gap value is reproducible.)
+
+\paragraph{What the conditioning finding does establish.}
+The dynamic range above motivates the equilibration, not the choice of solver.
+With the structural presolve (singleton and fixed-column removal,
+geometric-mean Ruiz equilibration, objective scaling) disabled, the same CORGI
+run on the relaxed root diverges (primal residual $5.9\times10^{3}$, objective
+about $200\times$ the optimum), and $40$ Ruiz iterations on the unscaled row
+bounds overflow to NaN, so the rescaling machinery is necessary for a
+first-order method on this matrix at all; it is not sufficient on the
+degenerate relaxation, and the shape-aggregated LP does not need a first-order
+method. A full solver-versus-solver comparison at the full-resolution scale is
+left as immediate future work.

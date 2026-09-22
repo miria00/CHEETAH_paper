@@ -1,0 +1,43 @@
+% Decode-side companion to the prefill two-factor split (tab:deficit_twofactor).
+% Data: systems/decode_decomp_results/ladder_b32_c{4096,32768}.json
+%       systems/decode_decomp_results/fig2_decomposition.csv  (plot source)
+\begin{table}[ht!]
+\centering
+\caption{Cumulative decode speedup decomposition for DeepSeek-V3 serving
+(batch $32$, acceptance $p=0.75$, $G=512$ generated tokens), at two decode
+context lengths. Each row frees one further group of decisions and is a
+certified integral design found by the same enumeration; the factor is the
+marginal gain over the row above, the cumulative column the product. Decode
+time is $(G/A(K))(T_{\mathrm{draft}}+T_{\mathrm{pass}})$ with per-step KV: the
+$G$ steps are split into four context bins and each bin pays its own
+$\max(\text{compute},\text{memory})$. KV is lossless (no eviction budget) and
+attention reads the KV history in compute as well as memory. Speculation is
+optional: $K{=}1$ carries no draft model, and the search may choose it.}
+\label{tab:decode_decomposition}
+\small
+\begin{tabular}{@{}lcccccc@{}}
+\toprule
+& \multicolumn{3}{c}{\textbf{context $4{,}096$}}
+& \multicolumn{3}{c}{\textbf{context $32{,}768$}} \\
+\cmidrule(lr){2-4}\cmidrule(lr){5-7}
+\textbf{Decisions freed} & $K^{\star}$ & Factor & Cumulative
+& $K^{\star}$ & Factor & Cumulative \\
+\midrule
+TPU-v3 baseline ($65{,}536$ MACs, $900$\,GB/s, W8A8-KV8, dense)
+ & $1$ & $1.00$ & $1.00$ & $1$ & $1.00$ & $1.00$ \\
+$+$ weight bytes (W4, $2{:}4$ sparsity, expert pinning)
+ & $1$ & $3.87$ & $3.87$ & $1$ & $3.21$ & $3.21$ \\
+$+$ KV co-design (KV4, on-chip hot window, prefix reuse)
+ & $1$ & $1.04$ & $4.04$ & $1$ & $1.32$ & $4.23$ \\
+$+$ speculation ($K \in \{\text{off},2,4,8,16,32\}$, $1$\,GB draft)
+ & $4$ & $1.89$ & $7.62$ & $2$ & $1.02$ & $4.32$ \\
+$+$ hardware (MACs, bandwidth, memory technology, overlap)
+ & $16$ & $4.69$ & $\mathbf{35.79}$ & $8$ & $7.59$ & $\mathbf{32.74}$ \\
+\midrule
+\multicolumn{7}{@{}l@{}}{\footnotesize Co-designed chip, both contexts:
+$24.4\times$ TPU-v3 MACs, $3{,}200$\,GB/s. End-to-end serving speedup
+(prefill $+$ decode): $32.18\times$ at $4{,}096$, $30.38\times$ at
+$32{,}768$.} \\
+\bottomrule
+\end{tabular}
+\end{table}

@@ -1,0 +1,70 @@
+\subsection{Where the decode speedup comes from}
+\label{sec:decode_decomp}
+
+\cref{tab:deficit_twofactor} splits the prefill speedup into a scheduling factor
+on fixed silicon and a provisioning factor to the co-designed chip. The decode
+phase admits the same treatment, and the answer is different in kind: prefill is
+compute-bound, so its gain is dominated by provisioning, while decode is bound
+by the bytes each step must stream, so most of its gain is bought before any
+silicon changes.
+
+\cref{tab:decode_decomp} reports the decomposition. Each step is a certified
+integral design found by the same enumeration, the arms are cumulative, and
+every arm is compared against the same fixed TPU-v3 evaluated at the same batch,
+context, and generation length. Decode time is
+$(G/A(K))\,(T_{\mathrm{draft}}+T_{\mathrm{pass}})$, so a step that raises the
+per-pass cost but accepts more tokens per pass still shows as a gain.
+
+\begin{table}[ht!]
+\centering
+\caption{Cumulative decode speedup decomposition, DeepSeek-V3 at decode batch
+$32$, acceptance $p=0.75$, $G=512$ generated tokens, against a fixed TPU-v3 at
+the same operating point. $K^\star$ is the selected speculative width, where
+$K^\star{=}1$ means speculation is off and no draft model is paid for. Steps
+$1$ and $2$ hold the silicon at TPU-v3 ($65{,}536$ MACs, $900$\,GB/s); step $4$
+frees it. Conventions: lossless KV (the budget is pinned to the full history),
+no prefix-cache credit against decode traffic, per-step KV over four context
+bins, and attention compute charged over the history.}
+\label{tab:decode_decomp}
+\small
+\begin{tabular}{@{}llccccc@{}}
+\toprule
+& & & \multicolumn{2}{c}{$c=4{,}096$} & \multicolumn{2}{c}{$c=32{,}768$} \\
+\cmidrule(lr){4-5}\cmidrule(lr){6-7}
+\textbf{Step} & \textbf{What it adds} & $K^\star$ & Cumul. & Step
+& Cumul. & Step \\
+\midrule
+D0 & fixed TPU-v3, W8A8-KV8, dense & 1 & $1.00\times$ & & $1.00\times$ & \\
+D1 & weight bytes: W4, $2{:}4$ sparsity, expert pinning & 1 &
+   $3.87\times$ & $3.87\times$ & $3.21\times$ & $3.21\times$ \\
+D2 & KV co-design: KV4, on-chip hot window, prefix reuse & 1 &
+   $4.04\times$ & $1.04\times$ & $4.23\times$ & $1.32\times$ \\
+D3 & speculation: width $K$ and its draft cost & 4 / 2 &
+   $7.62\times$ & $1.89\times$ & $4.32\times$ & $1.02\times$ \\
+D4 & hardware: MACs, bandwidth, memory technology & 16 / 8 &
+   $\mathbf{35.79\times}$ & $4.70\times$ & $\mathbf{32.74\times}$ & $7.59\times$ \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\paragraph{The KV term grows with context, and it is the only term that does.}
+At $c=4{,}096$ the KV read is $4.9$\,GB of the $422$\,GB a baseline step
+streams, so KV co-design is worth $1.04\times$ and the decode bottleneck is
+almost entirely the mixture-of-experts weight reload. At $c=32{,}768$ the same
+read is $37.1$\,GB, and because step D1 has already cut the weight bytes in
+half it is $26\%$ of what the step streams, so the same lever is now worth
+$1.32\times$. The expert reload cannot grow past the point where a step touches
+all $256$ experts, while KV traffic grows linearly in batch times context, so
+the KV share rises with both. This is why the KV window is a co-design decision
+rather than a detail: time-multiplexing the on-chip window by layer buys enough
+resident capacity to hold $31{,}858$ positions per layer at $c=32{,}768$, which
+is what converts the growing KV read back into an on-chip one.
+
+\paragraph{Speculation is a lever, not an assumption.}
+$K{=}1$ with no draft model is in the menu at every step, so the program is free
+to decline speculation, and at $c=32{,}768$ on fixed silicon it nearly does:
+$K^\star$ falls to $2$ and the step is worth only $1.02\times$, because a wider
+window re-reads a longer KV history for every draft token it verifies. Once the
+silicon is free the balance moves back, and $K^\star$ rises to $8$ at
+$c=32{,}768$ and $16$ at $c=4{,}096$. A fixed speculative width would have
+reported the $4{,}096$ answer at both contexts.

@@ -1,12 +1,17 @@
 \section{Audits, Solver, and Serving Validation}
-\label{app:socp_provenance}
+\label{app:lp_provenance}
 
 \emph{This appendix maps the comprehensive program's constraint families to the
 production systems they are drawn from, states which solver solves the resulting
-second-order cone program, and reports a preliminary serving-regime validation on
-DeepSeek-V3. The results here are at the level of the convex relaxation and are
-calibrated on the analytic roofline; a fully rounded, real-Timeloop solve is
-immediate future work.}
+linear program, and reports a preliminary serving-regime validation on
+DeepSeek-V3. The results here are at the level of the LP relaxation (menu
+selectors relaxed) and are calibrated on the analytic roofline; every
+percentage is therefore a relaxation-level estimate, certified in neither
+direction and produced before the copy-bound fix of \eqref{eq:v3_arrayshape},
+and certified $(\mathrm{LB},\mathrm{UB})$ pairs from pinned-selector solves
+replace them; those certified pairs are now measured and are collected in
+\cref{tab:lever_pairs}, and the certified sandwich for the serving program with
+its full lever set is reported at the end of this appendix.}
 
 \paragraph{What we fold in, and from where.}
 The constraint families of \cref{sec:v3_levers,app:master_v3} are not invented in a
@@ -17,23 +22,29 @@ together with whether the decision binds on DeepSeek-V3 \emph{serving}.
 
 \begin{table}[h]
 \centering
-\small
+\footnotesize
+\resizebox{\linewidth}{!}{%
 \begin{tabular}{@{}llll@{}}
 \toprule
 Source & Technique & Constraint family / variable & Binds on DeepSeek serving? \\
 \midrule
-TensorRT-LLM & FP8/INT4 precision; kernel fusion & precision one-hot $q$, $s^W,s^{\mathrm{KV}}$; fusion $=$ residency $p$ & \textbf{yes}, largest, $+28.6\%$ \\
+TensorRT-LLM & FP8/INT4 precision; kernel fusion & precision one-hot $q$, $s^W,s^{\mathrm{KV}}$; fusion $=$ residency $p$ & \textbf{yes}, largest, $\approx 28.6\%$ \\
 & & \citep{lin2024awq,frantar2023gptq,hooper2024kvquant,dao2022flashattention} & \\
-vLLM & chunked-prefill interleaving; paged KV & interleave $\theta$; KV-budget $B^{\mathrm{KV}}$ \citep{kwon2023vllm} & \textbf{yes}, interleave $+38\%$ tighter \\
+vLLM & chunked-prefill interleaving; paged KV & interleave $\theta$; KV-budget $B^{\mathrm{KV}}$ \citep{kwon2023vllm} & \textbf{yes}, $\approx 38\%$ tighter \\
 SGLang & RadixAttention prefix reuse & $\eta_{\mathrm{hit}}(C_{\mathrm{cache}})$ \citep{zheng2024sglang} & present; small (little prefix sharing) \\
 ThunderKittens & async overlap; load/compute split; reg-file & $\kappa$; $\mathrm{BW_{eff}}{=}\min(\mathrm{BW},B_{\mathrm{LD}})$; $C_{\mathrm{RF}}$ \citep{spector2024thunderkittens} & present; inert (memory-bound) \\
 StreamingLLM/H2O & KV eviction & KV-budget cap \citep{xiao2024streamingllm,zhang2023h2o} & small \\
 DeepCache & cross-step feature reuse & $\chi_b$ \citep{ma2024deepcache} & inert (no diffusion) \\
 \bottomrule
-\end{tabular}
+\end{tabular}}
 \caption{Provenance of the comprehensive program's decisions and whether each binds on
 DeepSeek-V3 serving. Structured $2{:}4$ sparsity (a hardware/software decision rather
-than a single-system technique) is the second-largest, $+15.5\%$.}
+than a single-system technique) is the second-largest, $\approx 15.5\%$. The
+percentages are relaxation-level estimates (menu selectors relaxed), certified
+in neither direction and produced before the copy-bound fix of
+\eqref{eq:v3_arrayshape}; certified $(\mathrm{LB},\mathrm{UB})$ pairs replace
+them: see \cref{tab:lever_pairs}, where $2{:}4$ sparsity alone is certified to
+remove at least $42.0\%$ of serving latency.}
 \label{tab:provenance}
 \end{table}
 
@@ -41,27 +52,53 @@ than a single-system technique) is the second-largest, $+15.5\%$.}
 The single modelling principle behind the table is that the \emph{only} constants
 are the reference per-tile Pareto bases ($\Tmin(c)$, $\Tmax(c)$, byte footprints);
 every hardware coefficient is written as $\text{base}\times f(\text{decision
-variables})$. Compute time is $\Tmin(c)\,v\,/\big(\eta(\alpha)\,\gamma(\phi)\big)$
-and memory time is (precision-, cache-, and eviction-scaled bytes)$\,\times u$, with
-$v=1/\mathrm{MACs}$ and $u=1/\mathrm{BW_{eff}}$ exact rotated second-order cones.
-The classical per-trial Pareto rescale thus becomes an in-program function of the
-hardware variables rather than a per-chip precompute. Instantiated for DeepSeek-V3
-and shape-aggregated ($903$ operations $\to 13$ unique shapes, \cref{app:shape_agg}),
-the program has ${\sim}11{,}600$ variables, two exact SOC cones, and the McCormick
-envelopes for the genuine bilinears, compact, versus ${\sim}8.7$M rows for the
-naive per-operation build.
+variables})$. Compute time is $\sum_{a,f}\Tmin(c)\,v^{a,f}/(\eta_{a}\gamma_f)$ over
+per-branch copies of $v$, and memory time is the bandwidth-menu disaggregation of
+the (precision-, cache-, and eviction-scaled) bytes; $v\ge 1/m$ is bracketed by
+tangent and chord rows, and $u$ is the exact menu value, so every product is
+exact at integral selectors. The classical per-trial Pareto rescale thus becomes
+an in-program function of the hardware variables rather than a per-chip
+precompute. Instantiated for DeepSeek-V3 and shape-aggregated ($903$ operations
+$\to 13$ unique shapes, \cref{app:shape_agg}), the program has
+$6{,}815$ variables and $510$ equality plus $22{,}511$ inequality rows, all
+linear, to which the exported instances add $89$ tangent (or $88$ chord) rows
+for the compute reciprocal ($23{,}110$ rows and $58{,}698$ nonzeros for the
+certificate instance); the bandwidth menu has $8$ points (the $8$ of the $12$
+catalogue points that pass the pin gate $\mathrm{BW}/0.8\le 4096$ pins), and
+hull rows for every selector-times-quantity product, compact, versus
+${\sim}8.7$M rows for the naive per-operation build.
 
 \paragraph{Which solver.}
-The program is a second-order cone program, so an LP solver such as HiGHS does not
-apply; it is solved by a conic solver. As \cref{app:socp_conditioning} details, in
-natural units the instance is too ill-conditioned for off-the-shelf conic solvers
-to solve at all; after an exact diagonal unit rescaling, an interior-point conic
-solver (Clarabel) returns an optimal solution in a few seconds per configuration,
-though it remains stiff enough to require a multi-start. For the ill-conditioned
-production instances the intended solver is VM-One-Armed-Rescue
-(\cref{sec:solver_vm}): a restarted primal-dual hybrid gradient method with a
-diagonal variable-metric rescaling, which is designed precisely for the conditioning
-this comprehensive program exhibits.
+The program is a linear program. The shape-aggregated instances are solved by
+HiGHS (certified vertex, $0.05$ seconds per instance) and by CORGI, our
+restarted primal-dual hybrid gradient method with variable-metric rescaling
+(\cref{sec:solver_vm}), which is intended for the full-resolution instances
+(\todo{measured: CORGI and HiGHS on the full-resolution instance}). On the $67$
+exported serving instances ($32$ pinned
+bandwidth-times-decode-precision branches, each as an outer and a chord LP,
+plus the relaxed root pair and one diagnostic) the two do not yet agree: HiGHS
+returns an optimal vertex on all $67$, while CORGI, at its $200{,}000$-iteration
+budget (about $35$ seconds per instance on an RTX 5090), does not meet its own
+convergence test on any of them. On the pinned branch LPs its primal objective
+differs from the HiGHS optimum by between $3.7\times10^{-3}$ and $18.5$
+relative (median $3.4$; only the $225$ GB/s branch is within $0.3$), and on the
+fully relaxed root LPs it stops $1.8$ to $2.7$ times above the optimum. The
+relaxed root is measurably degenerate (at the HiGHS optimum only $122$ of the
+$6{,}815$ columns are basic, $5{,}971$ non-basic columns have zero reduced
+cost, and $17{,}430$ basic rows are tight), which is the cause
+(\cref{app:socp_conditioning}); the GPU run is also not deterministic
+from run to run, and the $10^{30}$ row-bound sentinels of the export leak into
+CORGI's dual objective, so no per-run gap value is reproducible. Every bound
+reported here is therefore HiGHS's.
+As \cref{app:socp_conditioning} details, the earlier conic form of the same
+program was too ill-conditioned in natural units for off-the-shelf conic solvers
+to solve at all, and stiff even after rescaling; the linear form removes the
+big-$M$ constants that dominated that range. The lower bounds we report are
+safe dual bounds of the outer (tangent) LP: the larger of the root bound (all
+menu selectors relaxed) and the disjunctive bound (the minimum, over the
+enumerated bandwidth-times-decode-precision branches, of the branch outer LP's
+safe dual bound). The achievable designs come from the chord LP with every
+selector pinned and verified by an exact-lift check.
 
 \paragraph{A preliminary serving validation on DeepSeek-V3.}
 The decisions are memory-regime decisions, so the objective the program is written over
@@ -71,15 +108,101 @@ limit), and all of the candidate decisions are inert (they move the objective by
 than $0.006\%$). Under the \emph{serving}-latency objective
 $\min\,T_{\mathrm{prefill}}+G\cdot T_{\mathrm{decode}}$ (context $4096$, batch $32$,
 $G=512$), where the memory-bound decode phase dominates by construction, the decisions
-activate: W4 weight precision alone reduces serving latency by $28.6\%$ and $2{:}4$
-sparsity by $15.5\%$ (both act on the mixture-of-experts weight reload, which is
-${\sim}98\%$ of decode DRAM traffic), while the full set reduces it by ${\sim}51.5\%$
-,  roughly a $2\times$ software contribution on top of the hardware co-design. The
-compute-side ThunderKittens decisions (overlap, register-file occupancy) remain inert,
-which is correct for a weight-reload-bound workload. We emphasise these are
-preliminary, relaxation-level numbers: three McCormick sub-problems were found to
-leak spurious gains and were tightened (an integer or perspective reformulation is
-the correct fix), after which the load-bearing precision decision is exact
-($s^W_{\mathrm{dec}}=1/2$, i.e.\ unambiguously W4) even though some one-hot
-selectors remain fractional in the relaxation. A fully rounded solve under the
-reconciled real-Timeloop calibration is the immediate next step.
+activate. Each lever set is now solved to a certified pair: the lower bound is
+the larger of the safe dual bound of the root outer LP and the smallest safe
+dual bound over the complete pinned-selector enumeration, and the upper bound is
+the best exact-lifted pinned-selector design, so
+$1-\mathrm{UB}_{\mathrm{lever}}/\mathrm{LB}_{\mathrm{base}}$ is a certified
+improvement and $1-\mathrm{LB}_{\mathrm{lever}}/\mathrm{UB}_{\mathrm{base}}$
+an optimistic one. \Cref{tab:lever_pairs} reports them against a base
+configuration with every lever off (W8A8 weights and activations, an 8-bit KV
+cache, dense experts, no expert pinning or host tier, HBM, full context, no
+prefix cache, no register-file residency and no overlap). W4 weight precision
+alone is certified to remove at least $45.1\%$ of serving latency and $2{:}4$
+sparsity at least $42.0\%$; both act on the mixture-of-experts weight reload,
+which is ${\sim}98\%$ of decode DRAM traffic. The full lever set is certified at
+$65.5\%$, but its interval $[18.83,\,22.02]$ overlaps the interval
+$[18.81,\,21.66]$ of W4 and $2{:}4$ sparsity together, so the remaining eleven
+levers are certified to improve on that pair in neither direction. The
+compute-side ThunderKittens decisions (overlap, register-file occupancy) remain
+inert, which is correct for a weight-reload-bound workload, and pinning, memory
+technology, the attention split, grouped expert GEMM, prefix caching and the KV
+budget move neither bound by more than $10^{-4}$ on this workload. The earlier
+relaxation-level estimates (${\approx}28.6\%$ for W4, ${\approx}15.5\%$ for
+$2{:}4$) were produced before the copy-bound fix of \eqref{eq:v3_arrayshape} and
+compared two relaxed optima, whose ratio bounds the ratio of the true optima in
+neither direction; the certified numbers are larger.
+
+\begin{table}[t]
+\centering
+\small
+\begin{tabular}{lrrrr}
+\toprule
+lever set & LB & UB & certified & optimistic \\
+\midrule
+base (all levers off) & $63.758$ & $65.422$ & n/a & n/a \\
+W4 weight precision only & $32.995$ & $34.991$ & $45.1\%$ & $49.6\%$ \\
+$2{:}4$ sparsity only & $34.097$ & $36.949$ & $42.0\%$ & $47.9\%$ \\
+W4 and $2{:}4$ together & $18.811$ & $21.663$ & $66.0\%$ & $71.2\%$ \\
+full lever set & $18.830$ & $22.018$ & $65.5\%$ & $71.2\%$ \\
+\bottomrule
+\end{tabular}
+\caption{Certified lever pairs for DeepSeek-V3 serving (context $4096$, batch
+$32$, $G=512$), in units of $10^{9}$ cycles at the $1$\,GHz convention, one
+cycle per nanosecond. LB is
+$\max$(root safe dual bound, smallest branch safe dual bound) on the $10^{-3}$
+tangent grid and UB is the best exact-lifted pinned-selector design; certified
+$=1-\mathrm{UB}_{\mathrm{lever}}/\mathrm{LB}_{\mathrm{base}}$, optimistic
+$=1-\mathrm{LB}_{\mathrm{lever}}/\mathrm{UB}_{\mathrm{base}}$. Every LP in
+the table was solved to optimality by HiGHS. The last two rows overlap, so
+neither dominates the other in a certified sense.}
+\label{tab:lever_pairs}
+\end{table} Three
+McCormick sub-problems were found to leak spurious gains
+and were tightened at the time (the hull disaggregation now in
+\eqref{eq:v3_prec} is the definitive fix), after which the precision selector
+came out integral ($s^W_{\mathrm{dec}}=1/2$, W4) even though some other one-hot
+selectors remained fractional in the relaxation
+(\todo{measured: re-solve with the hull builder}). A fully pinned solve
+under the reconciled real-Timeloop calibration is the immediate next step.
+
+\paragraph{Certified sandwich at the solved operating point.}
+For the serving program at the same operating point (context $4096$, batch
+$32$, $G=512$) with the default lever set enabled and the LP rescaled as in
+\cref{app:socp_conditioning} (objective in units of $10^{9}$ cycles at the
+$1$\,GHz convention, one cycle per nanosecond), the pinned-selector enumeration over the $8$ bandwidth points and the
+$4$ decode-precision options gives $32$ branches, every one of which HiGHS
+solves to optimality. The root outer LP (all selectors relaxed, tangent grid
+$10^{-3}$) has safe dual bound $\mathrm{LB}_{\mathrm{root}}=16.836$; the
+disjunctive bound over the $32$ branch outer LPs on the same grid is
+$\mathrm{LB}=18.830$, attained at $3200$ GB/s with W4A8 and a 4-bit KV cache,
+and is the certified lower bound. The best exact-lifted design sits in the same
+branch: $\mathrm{UB}=22.018$ at $3200$ GB/s with W4A8 and a 4-bit KV cache
+(lift residual $5.9\times10^{-17}$, every selector integral), so the certified
+pair is $(\mathrm{LB},\mathrm{UB})=(18.830,\,22.018)\times10^{9}$ cycles at
+the $1$\,GHz convention, a gap of
+$14.5\%$ of the upper bound ($23.5\%$ against the root bound alone). Twenty of
+the $32$ branches lift directly; the other twelve fail the argmax rounding of
+the memory-technology selector, lift once that selector is pinned to HBM, and
+none of them beats the winner (best $25.303$). The in-branch integrality gap of
+the winner is $0.145$, of which the reciprocal sandwich contributes
+$2.2\times10^{-4}$ and the rounding of the selectors that are not enumerated
+contributes $0.145$, so the remaining gap is rounding, not the reciprocal
+envelope (the root reciprocal residual is $4.5\times10^{-4}$, inside the
+$10^{-3}$ grid). An independent run on an H100 reproduces every HiGHS bound on
+these certificate LPs to every printed digit.
+
+\paragraph{A defect these certificates exposed.}
+The first certified sandwich we obtained for this program was
+$(1.910,\,4.118)\times10^{9}$ cycles, a factor of five better than the numbers
+above, and the design behind it served all $256$ experts from the host tier. The
+tiered-memory family removes hosted experts from the DRAM reload and defines a
+host-link time $T_{\mathrm{host}}$, but the epigraph that charges it,
+$T^{\mathrm{step}}_{\mathrm{dec}} \ge T_{\mathrm{host}}$, was missing from the
+implementation, so hosting an expert was free and the optimiser hosted every
+one: $186$ GB per decode pass over a $64$ GB/s link, charged at nothing. With
+the epigraph restored the same enumeration returns the pair reported above and
+the winning design hosts $10$ of $256$ experts, worth one to two percent rather
+than a factor of sixteen. We report this because it is the failure mode a
+certified bound is for: the sandwich itself was valid at every step, and what it
+certified was the model, not the machine.

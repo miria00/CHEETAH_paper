@@ -395,11 +395,11 @@ next corollary bounds how CHEETAH's own formulations relate to one another,
 tying the certified lower bound to the disaggregated perspective epigraph of
 CHEETAH-V1 (\S\ref{sec:v1}, \eqref{eq:v3_epigraph}).
 
-\begin{corollary}[V3's disaggregated epigraph is the exact hull and tightens the certified bound]
+\begin{corollary}[The flagship program's disaggregated epigraph is the exact hull and tightens the certified bound]
 \label{cor:v3_hull}
 Fix the hardware ($v,u$) and mapper constants. Let the aggregate roofline row of
 CHEETAH-V1 \eqref{eq:v1} be
-$T_i \ge \max\!\big(\sum_c \Tmin_i(c)\,v_{i,c},\; \sum_c (\Tmax_i(c){-}\mathrm{save}_{i,c})\,u_{i,c}\big)$,
+$T_i \ge \max\!\big(\sum_c \Tmin_i(c)\,y_{i,c}\,v,\; \sum_c (\Tmax_i(c){-}\mathrm{save}_{i,c})\,y_{i,c}\,u\big)$,
 and let \eqref{eq:v3_epigraph} be the disaggregated perspective form with split
 variables $v_{i,c},u_{i,c},\tau_{i,c}$ obeying $\sum_c v_{i,c}{=}v$,
 $\sum_c u_{i,c}{=}u$ and the box links

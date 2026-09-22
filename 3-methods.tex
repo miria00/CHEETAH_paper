@@ -2488,9 +2488,10 @@ balls-in-bins occupancy model), with load-balancing and token-drop caps bounding
 the tail. When a deployment spans a wide range of shapes, the same program is
 solved over a distribution of operating points (a few weighted
 $(\text{context},\text{batch},\text{routing})$ samples) to yield a design robust
-across the dynamic range rather than overfit to one point; such a stochastic or
-robust objective is naturally conic and is handled directly by our
-second-order-cone solver. Per-request scheduling of one realized dynamic graph is
+across the dynamic range rather than overfit to one point; such a stochastic
+objective is the weighted sum $\sum_k w_k T^{(k)}$ over the samples, and the
+robust one the epigraph $T \ge T^{(k)}$ for every sample; both are linear rows
+of the same LP. Per-request scheduling of one realized dynamic graph is
 a separate problem (a fixed-hardware compiler), not the co-design program studied
 here.
 
@@ -2632,7 +2633,7 @@ Geometrically (Figure~\ref{fig:mccormick}), the two upper inequalities are the c
 \end{figure}
 % \vspace{-4pt}
 \paragraph{The Joint CHEETAH-V1 LP Formulation.}
-Combining tiling selection, time-indexed placement, rematerialization, and McCormick linearization yields the full V1 program. We do not display it separately: it is the special case of the V2 program \eqref{eq:v1} with the CGM one-hot $h_{\mathrm{GM}}$ pinned to the proposed chip's memory and the tile-dependent families $z^{\mathrm{act}}, z^{W}$ dropped, and both are in turn special cases of the flagship V1 program, displayed in full as \eqref{eq:v1} at the end of Section~\ref{sec:v1}.
+Combining tiling selection, time-indexed placement, rematerialization, and McCormick linearization yields the full V1 program. We do not display it separately: it is the special case of the flagship program \eqref{eq:v1} with the hardware reciprocals $v,u$ pinned to the proposed chip, the CGM one-hot $h_{\mathrm{GM}}$ pinned to its memory, and the tile-dependent families $z^{\mathrm{act}}, z^{W}$ dropped; it in turn contains the fixed-chip program \eqref{eq:v0}, and \eqref{eq:v1} is displayed in full at the end of Section~\ref{sec:v1}.
 
 \paragraph{Tile-dependent residency.}
 Extending V1's linearization, V2 introduces two additional McCormick families
@@ -2667,7 +2668,8 @@ collapsing the disaggregated variables recovers the fixed-chip case exactly, so
 this single formulation subsumes CHEETAH-V0 and is our flagship program.
 
 \paragraph{Hardware as decision variables.}
-Alongside the one-hot CGM selector $h_{\mathrm{GM},k}$, V3 sizes the MAC array
+Alongside the one-hot CGM selector $h_{\mathrm{GM},k}$, the flagship program
+\eqref{eq:v1} sizes the MAC array
 and DRAM bandwidth \emph{inside} the program. Writing the reference-normalized
 reciprocals $v = M_{\mathrm{ref}}/\mathrm{MACs}$ and
 $u = \mathrm{BW_{ref}}/\mathrm{BW}$ (so a tile's compute time is $\Tmin_i(c)\,v$
@@ -2681,25 +2683,37 @@ area and power envelopes
 \pi_{\mathrm{MAC}}\,\mathrm{MACs} \;\le\; P_{\mathrm{cap}} .
 \label{eq:v3_caps}
 \end{equation}
-The reciprocals are convex; we represent them either \emph{exactly} by a one-hot
-menu over a finite legal set of $(\mathrm{MACs},\mathrm{BW})$ points (no
-approximation, ideal for the certified sub-problem), or by an outer-tangent
-relaxation for a continuous LP search. Because our custom solvers also admit
-second-order-cone and quadratic programs, the reciprocals may instead be written
-\emph{exactly} as rotated second-order cones ($m\,v \ge 1$, $\beta\,u \ge 1$, with
-no tangent gap), and the saturating utilization and cache-hit profiles as exact
-concave constraints rather than one-hot grids; McCormick then remains the right
-tool only for the genuinely nonconvex bilinears ($y\,p$, $u\,w$), where it is the
-convex hull. This internalizes the hardware proposal the outer loop previously
+The reciprocals are convex epigraphs, and the program is a linear program.
+Bandwidth \emph{is} a finite menu: $\mathrm{BW}$ is a one-hot selection
+$\nu_\ell$ over the gate-feasible legal points $\mathrm{BW}_\ell$
+($8$ of the $12$ catalogue points on DeepSeek-V3 pass the pin gate
+$\mathrm{BW}/0.8\le 4096$ pins), so
+$u=1/\mathrm{BW}=\sum_\ell \nu_\ell/\mathrm{BW}_\ell$ is exact at integral
+$\nu$ and the LP relaxation of the menu is a valid lower bound. The compute
+reciprocal $v \ge 1/m$ is bracketed by tangent rows on a geometric grid of $m$
+(a valid relaxation, hence a certified lower bound) and by chord rows on the
+same grid (an inner approximation); with 89 grid rows each envelope is within
+$10^{-3}$ of $1/m$, so the bracket is at most $2\times10^{-3}$ wide, and no
+auxiliary variable is needed. Every product of a
+menu selector with a continuous quantity is written as its convex hull
+(disaggregated copies with a linking equality), which is exact at integral
+selectors; McCormick envelopes are used only in that hull form. The chord
+(inner) LP yields an achievable design only once every menu selector is pinned
+to an integral value and the pinned solution passes an exact-lift check
+(reciprocals and products set to their true values, every original row
+re-verified); with relaxed selectors it is neither a lower nor an upper bound,
+so every ``exact'' below means exact at integral selectors. This internalizes the hardware proposal the outer loop previously
 made, so a single solve sizes chip \emph{and} schedule jointly under a hard
 area/TDP budget.
 
 \paragraph{Disaggregated perspective epigraph.}
-The aggregate roofline row of \eqref{eq:v1},
-$T_i \ge \max\!\big(\sum_c \Tmin_i(c)\,v,\; \sum_c (\Tmax_i(c){-}\mathrm{save})\,u\big)$,
+The aggregate roofline row
+$T_i \ge \max\!\big(\sum_c \Tmin_i(c)\,y_{i,c}\,v,\; \sum_c (\Tmax_i(c){-}\mathrm{save})\,y_{i,c}\,u\big)$,
+the form used before the per-tile split below,
 is loose once $y$ is fractional: it lets the solver blend a compute-bound tile
 against a bandwidth-bound tile and hide \emph{both} bottlenecks
-(the source of a large relaxation gap on weight-heavy models). V3 replaces it
+(the source of a large relaxation gap on weight-heavy models). The flagship
+program \eqref{eq:v1} replaces it
 with the disaggregated perspective form
 \begin{equation}
 \begin{aligned}
@@ -2731,9 +2745,9 @@ and it is what the outer loop of the next subsection exploits.
 Collecting the pieces, the full V1 program takes the fixed-chip rows above with the aggregate
 roofline row replaced by the disaggregated perspective epigraph, the reciprocals
 $v,u$ and the memory one-hot promoted to decisions under the same-silicon caps,
-and one further McCormick family $\zeta_{i,c,k} = u\, w_{i,c,k}$ (over the box
-$u \in [\underline u, \overline u]$) so that the DRAM savings scale with
-bandwidth linearly. Writing $m = \mathrm{MACs}/M_{\mathrm{ref}}$ and
+and one further hull family $X_{i,c,\ell}$, the bandwidth-menu copies of the
+memory-time numerator $X_{i,c}=\Tmax_i(c)\,y_{i,c}-\sum_k t_i^k(c)\,w_{i,c,k}$,
+so that the DRAM savings scale with bandwidth exactly at integral $\nu$. Writing $m = \mathrm{MACs}/M_{\mathrm{ref}}$ and
 $\beta = \mathrm{BW}/\mathrm{BW_{ref}}$, the program is \eqref{eq:v1}.
 The CHEETAH-V1 LP formulation is:
 \begin{equation}
@@ -2744,9 +2758,11 @@ The CHEETAH-V1 LP formulation is:
 \text{s.t.} \quad
 & \sum_{c \in \mathcal{C}_i} y_{i,c} = 1 \;\;\forall\, i, \qquad
   \sum_{k=0}^{K-1} h_{\mathrm{GM},k} = 1 \\[3pt]
-& v \;\geq\; \tfrac{2}{m_j} - \tfrac{m}{m_j^{2}}, \qquad
-  u \;\geq\; \tfrac{2}{\beta_j} - \tfrac{\beta}{\beta_j^{2}}
-  \quad \forall\, j \in \mathcal{J} \\[3pt]
+& v \;\geq\; \tfrac{2}{m_j} - \tfrac{m}{m_j^{2}} \quad \forall\, j \in \mathcal{J}
+  \quad\text{(tangent rows; chord rows for the inner LP)} \\[3pt]
+& \beta = \textstyle\sum_{\ell} \nu_\ell\, \beta_\ell, \qquad
+  u = \textstyle\sum_{\ell} \nu_\ell/\beta_\ell, \qquad
+  \textstyle\sum_{\ell} \nu_\ell = 1 \quad\text{(bandwidth menu)} \\[3pt]
 & \kappa_{\mathrm{MAC}}\,\mathrm{MACs} + \kappa_{\mathrm{SRAM}}\!\sum_{k} 2^{k} h_{\mathrm{GM},k}
   + \kappa_{\mathrm{BW}}\,\mathrm{BW} \leq A_{\mathrm{cap}}, \qquad
   \pi_{\mathrm{MAC}}\,\mathrm{MACs} \leq P_{\mathrm{cap}} \\[3pt]
@@ -2756,10 +2772,14 @@ The CHEETAH-V1 LP formulation is:
   \underline u\, y_{i,c} \leq u_{i,c} \leq \overline u\, y_{i,c}
   \quad \forall\, i, c \\[3pt]
 & \tau_{i,c} \geq \Tmin_i(c)\, v_{i,c}, \qquad
-  \tau_{i,c} \geq \Tmax_i(c)\, u_{i,c} - \sum_{k} t_i^k(c)\, \zeta_{i,c,k}, \qquad
+  \tau_{i,c} \geq \textstyle\sum_{\ell} X_{i,c,\ell}/\beta_\ell, \qquad
   T_i \geq \sum_{c \in \mathcal{C}_i} \tau_{i,c} \quad \forall\, i, c \\[3pt]
 & \text{Envelopes~\eqref{eq:mccormick} for } w_{i,c,k};\;
-  \text{McCormick for } \zeta_{i,c,k} = u\,w_{i,c,k} \text{ on } [\underline u,\overline u]{\times}[0,1];\;
+  X_{i,c} = \Tmax_i(c)\,y_{i,c} - \textstyle\sum_k t_i^k(c)\,w_{i,c,k} = \textstyle\sum_{\ell} X_{i,c,\ell}
+  \quad \forall\, i, c \\[3pt]
+& \underline X_{i,c}\,\nu_\ell \le X_{i,c,\ell} \le \Tmax_i(c)\,\nu_\ell
+  \quad \forall\, i, c, \ell \\[3pt]
+& 
   \text{\eqref{eq:mccormick_v2} for } z^{\mathrm{act}}_{e,c,t}, z^{W}_{i,c,t} \\[3pt]
 & \sum_{e \in \mathcal{E}_{\mathrm{live}}(t)} \sum_{c}
     d^{\mathrm{act}}_{e,c}\, z^{\mathrm{act}}_{e,c,t}
@@ -2772,32 +2792,38 @@ The CHEETAH-V1 LP formulation is:
   r_{i,t} \leq \min\!\big(p_{e,t},\, p_{i,t}^W\big)
   \;\;\forall\, e \in \text{in}(i),\, t > o(i) \\[3pt]
 & T_i,\, \tau_{i,c},\, v_{i,c},\, u_{i,c} \geq 0; \quad
-  y, p, p^W, r, w, z, h_{\mathrm{GM}} \in [0,1]; \quad
+  y, p, p^W, r, w, z, h_{\mathrm{GM}}, \nu \in [0,1]; \quad
   v \in [\underline v, \overline v],\; u \in [\underline u, \overline u]
 \end{aligned}
 \tag{V1}\label{eq:v1}
 \end{equation}
 
+Here $\underline X_{i,c}=\min\{0,\,\Tmax_i(c)-\sum_k t_i^k(c)\}$: in the
+measured tile caches the per-tensor byte terms can exceed $\Tmax_i(c)$, so the
+numerator box is not sign-restricted, and the bandwidth-menu rows
+($X_{i,c,\ell}$, $\nu_\ell$) are exact at integral $\nu$.
 Pinning $(v,u,h_{\mathrm{GM}})$ to a proposed chip makes the cap, tangent, and
-link rows inert, turns $\zeta$ into the constant multiple $u\,w$, and leaves
+link rows inert, turns the menu copies $X_{i,c,\ell}$ into the constant multiple
+$X_{i,c}/\beta$, and leaves
 \eqref{eq:v1} up to the tightening of Corollary~\ref{cor:v3_hull}; this is the
-precise sense in which V3 subsumes V0 and V1. When an exact certified sub-problem
-is required, the tangent rows are replaced by a one-hot menu over a finite legal
-set of $(\mathrm{MACs},\mathrm{BW})$ points, which introduces no approximation
-and is the form used by the column-generation column-generation oracle.
+precise sense in which the flagship program subsumes V0. When an achievable
+certified sub-problem is required, the compute tangent rows are replaced by the
+chord rows with every menu selector pinned (the inner LP), whose solution is a
+design once the exact-lift check passes; bandwidth is already a menu and needs no
+replacement. This is the form used by the column-generation oracle.
 
 \subsection{The Comprehensive CHEETAH-V1: Serving-Regime Co-Design Decisions}\label{sec:v3_levers}
 Program~\eqref{eq:v1} sizes compute, bandwidth, and on-chip memory jointly with
 the schedule. The memory-bound decode regime of LLM, MoE, and diffusion serving
 admits four further decisions, each of which reduces the bytes moved or sets a
-hardware capacity, hence is a linear (or McCormick-linearizable) addition to V3
-rather than an outer-loop guess. We fold them in below. Every added block is
+hardware capacity, hence is a linear (or McCormick-linearizable) addition to
+the flagship program \eqref{eq:v1} rather than an outer-loop guess. We fold them in below. Every added block is
 \emph{inert when pinned}: fixing its selector to a baseline policy leaves
 \eqref{eq:v1}, and with it the V0 and V1 chain, exactly intact, so the subsumption
 property is preserved. Decisions that only rescale coefficients (the decode batch
 $N$, the speculative-decode width $K$) enter as workload parameters that reshape
-the per-op dimensions and thus arithmetic intensity, and $V3$ evaluates any
-$(N,K)$ without deciding them; genuinely discrete or non-convex choices (draft
+the per-op dimensions and thus arithmetic intensity, and the flagship program
+\eqref{eq:v1} evaluates any $(N,K)$ without deciding them; genuinely discrete or non-convex choices (draft
 model, eviction policy, denoising-step schedule) remain columns the outer loop
 proposes and the LP evaluates against its duals. Accuracy is never linearized: each
 precision menu below is restricted to configurations the quantization literature
@@ -2835,8 +2861,8 @@ q_{\phi,\rho}\in\{0,1\}.
 The weight and KV byte footprints $d^{W}_{i,c}$ and $d^{\mathrm{KV}}$ in the
 capacity row and the DRAM-savings term are replaced by $s^{W}_{\phi}d^{W}_{i,c}$
 and $s^{\mathrm{KV}}_{\phi}d^{\mathrm{KV}}$; the resulting selector-times-variable
-products are linearized by the same McCormick construction as
-$\zeta_{i,c,k}=u\,w_{i,c,k}$. For a mixture-of-experts layer the phase index is
+products are written as hull disaggregations of the per-step byte aggregates
+over the precision menu (exact at integral $q$). For a mixture-of-experts layer the phase index is
 refined to an \emph{expert} index: each expert $e$ carries its own one-hot
 $q_{e,\rho}$ and byte-scale $s^{W}_e=\sum_\rho b^W_\rho q_{e,\rho}$, so the solver
 may place the lowest-bit points on the hottest experts, where weight-reload
@@ -2855,7 +2881,9 @@ $\pi_{\mathrm{bit}}$ joules per bit:
 \label{eq:v3_power}
 \end{equation}
 where $\varrho_{\mathrm{DRAM}}$ is the precision-scaled DRAM byte-rate over the
-weight, activation, and KV classes. Setting $\pi_{\mathrm{bit}}=0$ recovers
+weight, activation, and KV classes; each $\beta_{\text{class}}$ is a workload
+constant (the bytes of that class streamed at the reference operating point),
+so the row is linear in the precision selectors. Setting $\pi_{\mathrm{bit}}=0$ recovers
 \eqref{eq:v3_caps}; a positive $\pi_{\mathrm{bit}}$ is precisely what makes
 provisioned bandwidth ``cost power'' in the certified program, so the
 byte-reducing decisions (precision, KV budget, expert residency) relax the same cap
@@ -2885,18 +2913,26 @@ A retained-cache budget $B^{\mathrm{KV}} \in [B_{\min},L_{\mathrm{ctx}}]$ replac
 the growing context length in the attention-input traffic, with $B_{\min}$ the
 quality floor of the eviction method (external). With per-token KV footprint
 $d^{\mathrm{KV}}$ and an on-chip residency indicator $\sigma_{\mathrm{KV}}\in
-\{0,1\}$,
+\{0,1\}$, the budget is disaggregated over the joint one-hot $\pi_{\rho,s}$ of
+decode precision $\rho$ and residency branch $s\in\{\mathrm{on},\mathrm{off}\}$
+(with $\sum_{\rho,s}\pi_{\rho,s}=1$, $\sum_s\pi_{\rho,s}=q_{\mathrm{dec},\rho}$,
+$\sum_\rho\pi_{\rho,\mathrm{on}}=\sigma_{\mathrm{KV}}$),
 \begin{equation}
-\Delta^{\mathrm{KV}}_{\mathrm{dram}} =
-   s^{\mathrm{KV}}_{\mathrm{dec}}\, B^{\mathrm{KV}}\, d^{\mathrm{KV}},
+\begin{aligned}
+&B^{\mathrm{KV}}=\textstyle\sum_{\rho,s}B_{\rho,s},\qquad
+B_{\min}\,\pi_{\rho,s}\le B_{\rho,s}\le L_{\mathrm{ctx}}\,\pi_{\rho,s},\\[2pt]
+&\Delta^{\mathrm{KV}}_{\mathrm{dram}} =
+   d^{\mathrm{KV}}\textstyle\sum_\rho b^{\mathrm{KV}}_\rho\, B_{\rho,\mathrm{off}},
 \qquad
-s^{\mathrm{KV}}_{\mathrm{dec}}\, B^{\mathrm{KV}}\, d^{\mathrm{KV}}
-   \;\le\; \textstyle\sum_k 2^k h_{\mathrm{GM},k} + M\,(1-\sigma_{\mathrm{KV}}),
+d^{\mathrm{KV}}\textstyle\sum_\rho b^{\mathrm{KV}}_\rho\, B_{\rho,\mathrm{on}}
+   \;\le\; \textstyle\sum_k 2^k h_{\mathrm{GM},k},
+\end{aligned}
 \label{eq:v3_kvbudget}
 \end{equation}
-so that a small enough budget ($\sigma_{\mathrm{KV}}=1$) lets the KV read be
-served on chip and leave the DRAM term, coupling the eviction budget directly to
-CGM sizing through $\lambda_{\mathrm{CGM}}$.
+a two-branch hull with no big-$M$, exact at integral $(q,\sigma_{\mathrm{KV}})$,
+so that a small enough budget on the on-chip branch ($\sigma_{\mathrm{KV}}=1$)
+lets the KV read be served on chip and leave the DRAM term, coupling the
+eviction budget directly to CGM sizing through $\lambda_{\mathrm{CGM}}$.
 
 \paragraph{Diffusion cross-step reuse (DeepCache).}
 For an $S$-step denoiser, a per-block reuse variable $\chi_b\in[0,1]$ caches block
@@ -2926,12 +2962,15 @@ the prefill backlog and a per-token latency SLA) folds prefill into the decode
 window, and the additive $T^{\mathrm{pre}}+N\,T^{\mathrm{dec}}$ is replaced by a
 mixed-window epigraph,
 \begin{equation}
-T_{\mathrm{serve}} \ge \big(\theta\,C^{\mathrm{pre}} + N\,C^{\mathrm{dec}}\big)\,v,
+T_{\mathrm{serve}} \ge \theta\,C^{\mathrm{pre}} + N\,C^{\mathrm{dec}},
 \qquad
-T_{\mathrm{serve}} \ge \big(\theta\,M^{\mathrm{pre}} + N\,M^{\mathrm{dec}}\big)\,u,
+T_{\mathrm{serve}} \ge \theta\,M^{\mathrm{pre}} + N\,M^{\mathrm{dec}},
 \label{eq:v3_interleave}
 \end{equation}
-so $T_{\mathrm{serve}}\ge\max(\cdot,\cdot)$ over the combined stream and the optimal
+with $C^{\mathrm{ph}}$ the lifted compute streams (linear in the per-branch
+copies of $v$), $M^{\mathrm{ph}}$ the bandwidth-menu memory streams (linear in
+the copies $X_{i,c,\ell}$), and $\theta$ a scheduler constant rather than a
+decision, so $T_{\mathrm{serve}}\ge\max(\cdot,\cdot)$ over the combined stream and the optimal
 $(v,u)$ ratio now tracks the \emph{combined} arithmetic intensity rather than
 either phase alone \citep{kwon2023vllm}.
 
@@ -2964,12 +3003,17 @@ one-hot over cache sizes $s\in\mathcal{S}$ scales the reused terms:
 \begin{equation}
 \sum_s \rho_s = 1,\quad \eta_{\mathrm{hit}} = \sum_s \eta_s\,\rho_s,\quad
 \widehat C^{\mathrm{pre}} = (1-\eta_{\mathrm{hit}})\,C^{\mathrm{pre}},\quad
-\widehat\Delta^{\mathrm{KV}}_{\mathrm{dram}} = (1-\eta_{\mathrm{hit}})\,
-   \Delta^{\mathrm{KV}}_{\mathrm{dram}},
+\widehat M^{\mathrm{pre}} = (1-\eta_{\mathrm{hit}})\,M^{\mathrm{pre}},
 \label{eq:v3_radix}
 \end{equation}
-so the solver trades cache area against the recompute and traffic it removes; the
-$\eta_{\mathrm{hit}}\Delta^{\mathrm{KV}}$ product is linearized as before.
+so the solver trades cache area against the prefill recompute and traffic it
+removes. The credit applies to the prefill streams only: the decode KV traffic
+$\Delta^{\mathrm{KV}}_{\mathrm{dram}}$ is not credited, because a shared prefix
+is re-read at every decode step whether or not it was cached at prefill (the
+convention of \cref{sec:decode_decomp}). The $\eta_{\mathrm{hit}}\,C^{\mathrm{pre}}$
+and $\eta_{\mathrm{hit}}\,M^{\mathrm{pre}}$ products are exact by disaggregating
+the prefill streams over the cache-size menu $\rho_s$; the LP relaxation of that
+menu is the chord hypograph of the measured hit-rate curve.
 
 \paragraph{Array shape and native tile granularity.}
 Fixing MAC \emph{count} leaves the array \emph{shape} free, and utilization is
@@ -2981,13 +3025,21 @@ per-op utilization $\eta_{i,a}\in(0,1]$; disaggregating $v_{i,c}$ over $a$ as in
 the perspective epigraph,
 \begin{equation}
 \textstyle\sum_a v^{a}_{i,c} = v_{i,c},\quad
-\underline v\,\alpha_a \le v^{a}_{i,c} \le \overline v\,\alpha_a,\quad
+0 \le v^{a}_{i,c} \le \overline v\,\alpha_a,\quad
 \tau_{i,c} \ge \sum_a \tfrac{\Tmin_i(c)}{\eta_{i,a}}\, v^{a}_{i,c},
 \label{eq:v3_arrayshape}
 \end{equation}
 which co-designs the array to the workload's matmul shapes and directly serves
 LLM/MoE decode GEMVs and EfficientNet depthwise convs
-\citep{spector2024thunderkittens}.
+\citep{spector2024thunderkittens}. The lower bound $\underline v\,y_{i,c}\le
+v_{i,c}$ lives on the tile selector in \eqref{eq:v3_epigraph} and is inherited
+by the copies through the linking sum, not placed on the aspect copies: since
+$\sum_a\alpha_a=1$, a positive lower bound on every copy would force
+$v_{i,c}\ge\underline v$ on every non-selected tile and make every integral tile
+choice infeasible (this was found and fixed in the implementation on
+2026-09-20). The DVFS copies $v^{f}_{i,c}$ of \eqref{eq:v3_dvfs} carry the same
+one-sided bounds, $\sum_f v^{f}_{i,c}=v_{i,c}$ and $0\le v^{f}_{i,c}\le
+\overline v\,\phi_{\mathrm{ph},f}$.
 
 \paragraph{Per-phase clock and voltage (DVFS).}
 Compute-bound prefill benefits from a high clock; memory-bound decode does not, so
@@ -3002,8 +3054,9 @@ the phase compute time and enters the power cap:
 \label{eq:v3_dvfs}
 \end{equation}
 so the chip runs fast in prefill and slow in decode, freeing power for bandwidth
-in the phase where compute is idle (the bilinear $\mathrm{MACs}\cdot\phi$ term is
-McCormick-linearized).
+in the phase where compute is idle (the $\mathrm{MACs}\cdot\phi$ term is the hull
+$\mathrm{MACs}=\sum_f \mathrm{MACs}_f$, $M_{\min}\phi_f\le\mathrm{MACs}_f\le
+M_{\max}\phi_f$, exact at integral $\phi$).
 
 \paragraph{Constrained and speculative decoding (parameters).}
 Constrained decoding over a compressed grammar FSM \citep{zheng2024sglang} and
@@ -3018,11 +3071,11 @@ The comprehensive CHEETAH-V1 program is \eqref{eq:v1} augmented with the
 precision, capacity, datapath, and scheduling families
 \eqref{eq:v3_prec}--\eqref{eq:v3_dvfs}: the interleaved perspective epigraph now
 reads the precision-scaled and cache-reduced bytes, the reload/eviction deltas
-$\Delta^{\mathrm{moe}}_{\mathrm{dram}}+\widehat\Delta^{\mathrm{KV}}_{\mathrm{dram}}$,
+$\Delta^{\mathrm{moe}}_{\mathrm{dram}}+\Delta^{\mathrm{KV}}_{\mathrm{dram}}$,
 and the shape-, frequency-, and load-engine-dependent compute in place of the
 fixed footprints. Because every block is inert under a pinned policy, the
 subsumption chain
-\eqref{eq:v1}$\subseteq$\eqref{eq:v1}$\subseteq$(comprehensive V3) holds by
+\eqref{eq:v0}$\subseteq$\eqref{eq:v1}$\subseteq$(comprehensive program) holds by
 construction. Its converged duals are exactly the resource-dual vector the
 LLM-Architect outer loop consumes: $\lambda_{\mathrm{BW}}$ (large in decode)
 values a GB/s, $\lambda_{\mathrm{MAC}}\!\approx\!0$ in decode makes added
@@ -3084,7 +3137,7 @@ $z^{\mathrm{act}}_{e,c,t},\ z^{W}_{i,c,t}$ & edge/op, config, step & V1 & tile-d
 \midrule
 $\mathrm{MACs},\,\mathrm{BW}$ & chip scalars & V1 & compute/BW sizing via reciprocals $v,u$ \eqref{eq:v3_caps} \\
 $v_{i,c},\ u_{i,c},\ \tau_{i,c}$ & op $i$, config $c$ & V1 & disaggregated perspective epigraph \eqref{eq:v3_epigraph} \\
-$\zeta_{i,c,k}$ & op $i$, config $c$, tensor $k$ & V1 & bandwidth-scaled savings product $u\cdot w_{i,c,k}$ \\
+$X_{i,c,\ell},\ \nu_\ell$ & op $i$, config $c$, menu point $\ell$ & V1 & bandwidth-menu copies; menu selector \\
 \bottomrule
 \end{tabular}
 \end{table}
@@ -3203,10 +3256,10 @@ $z^{\mathrm{act}}_{e,c,t},\, z^{W}_{i,c,t}$ & edge/op, config, step & tile-depen
 \midrule
 \multicolumn{3}{@{}l}{\emph{Hardware sizing inside the program}} \\
 $\mathrm{MACs},\,\mathrm{BW}$ & chip scalars       & compute and bandwidth sizing \\
-$v,\,u$            & chip scalars                 & reciprocals $1/m$, $1/\beta$ (rotated cones) \\
+$v,\,u$            & chip scalars                 & reciprocals $1/m$ (tangent/chord rows), $1/\beta$ (bandwidth menu) \\
 $h_{\mathrm{GM},k}$ & size level $k$              & one-hot on-chip capacity selection \\
 $v_{i,c},\,u_{i,c},\,\tau_{i,c}$ & op $i$, config $c$ & disaggregated perspective epigraph \\
-$\zeta_{i,c,k}$    & op $i$, config $c$, tensor $k$ & bandwidth-scaled savings $u\,w_{i,c,k}$ \\
+$X_{i,c,\ell},\ \nu_\ell$ & op $i$, config $c$, menu point $\ell$ & bandwidth-menu copies of $X_{i,c}$; menu selector \\
 \midrule
 \multicolumn{3}{@{}l}{\textbf{DeepSeek-V3 problem size}} \\
 Per operation ($N = 903$ ops) & \multicolumn{2}{l}{$2{,}504{,}019$ vars, $2{,}983{,}450$ rows, $6{,}094{,}156$ nnz} \\

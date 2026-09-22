@@ -3,20 +3,31 @@
 \label{app:master_v3}
 
 For reference, we collect the complete comprehensive CHEETAH-V1 co-design program
-on a single page. It is one certified optimization over a generic graph
+in one place: the core program on the first page and its extended families on the
+second. It is one certified optimization over a generic graph
 intermediate representation (a DAG of operations, each carrying a Timeloop-derived
 tile-configuration Pareto set and a roofline, connected by residency edges), with
 the hardware sized \emph{inside} the program and every serving-regime decision folded
-in as a certified constraint family. Once the hardware reciprocals
-$v=1/\mathrm{MACs}$ and $u=1/\mathrm{BW}$ are written as exact rotated
-second-order cones, the program is a \emph{second-order cone program} (SOCP): SOC
-cones for the reciprocals, McCormick envelopes for the genuine bilinears
-($y\,p$, $u\,w$), and linear rows for everything else. Each constraint family is drawn
+in as a certified constraint family. Bandwidth \emph{is} a finite menu of legal
+points, so its reciprocal $u=1/\mathrm{BW}$ is an exact one-hot expression
+whose LP relaxation is a lower bound; the compute reciprocal $v=1/\mathrm{MACs}$
+is bracketed by tangent rows (outer, certified lower bound) and chord rows
+(inner, an achievable design only once every selector is pinned and the
+exact-lift check passes); and every selector-times-quantity product is written
+in convex-hull form, exact at integral selectors. The program is therefore a
+\emph{linear program} (LP): hull rows for the products, epigraph rows for the
+rooflines, and linear rows for everything else. Each constraint family is drawn
 from a production serving or kernel system (vLLM, SGLang, ThunderKittens,
-TensorRT-LLM); \Cref{app:socp_provenance} maps each technique to its constraint
+TensorRT-LLM); \Cref{app:lp_provenance} maps each technique to its constraint
 family, names the solver, and reports a preliminary serving-regime validation on
 DeepSeek-V3. Each family is \emph{inert when pinned}, so
-$\eqref{eq:v1}\subseteq\eqref{eq:v1}\subseteq(\text{this program})$.
+\eqref{eq:v0} $\subseteq$ \eqref{eq:v1} $\subseteq$ (this program).
+The extended families below \emph{are part of this program}, not a wish list
+appended to it: each is written out as the rows the solver would receive, and
+each carries a status marker separating the families whose effect this paper
+measures from those the formulation carries but has not yet measured on the
+suite. We state them here in full because the program, not any one experiment,
+is what a reader should be able to reproduce and build on.
 
 \begin{center}
 \footnotesize
@@ -41,33 +52,35 @@ $\eqref{eq:v1}\subseteq\eqref{eq:v1}\subseteq(\text{this program})$.
 \vspace{-2pt}
 \begin{align*}
 &\textstyle\sum_c y_{i,c}=1,\quad \sum_k h_{\mathrm{GM},k}=1\\[-1pt]
-&w_{i,c,k}=y_{i,c}\,p_{\mathrm{assoc}(i,k),o(i)}\ \text{[McCormick]},\ \ \zeta_{i,c,k}=u\,w_{i,c,k}
+&w_{i,c,k}=y_{i,c}\,p_{\mathrm{assoc}(i,k),o(i)}\ \text{[McCormick hull, exact at integral $y$]}
 \end{align*}
 \vspace{-8pt}
 
 \underline{\textsc{Disaggregated perspective epigraph (roofline)}}
 \vspace{-2pt}
 \begin{align*}
-&\textstyle\sum_c v_{i,c}=v,\quad \sum_c u_{i,c}=u,\quad \sum_a v^{a}_{i,c}=v_{i,c}\\[-1pt]
-&\tau_{i,c}\ \ge\ \sum_a \frac{\Tmin_i(c)}{\eta_{i,a}}\,v^{a}_{i,c}\Big/\!\textstyle\sum_f \gamma_f\,\phi_{\mathrm{ph},f}\\[-2pt]
-&\tau_{i,c}\ \ge\ \Tmax_i(c)\,u_{i,c}-\textstyle\sum_k t_i^k(c)\,\zeta_{i,c,k},\qquad T_i\ge\textstyle\sum_c\tau_{i,c}
+&\textstyle\sum_c v_{i,c}=v,\ \ \underline v\,y_{i,c}\le v_{i,c}\le\overline v\,y_{i,c},\ \ \sum_{a,f} v^{a,f}_{i,c}=v_{i,c},\ \ 0\le v^{a,f}_{i,c}\le\overline v\,\psi_{a,f}\\[-1pt]
+&\tau_{i,c}\ \ge\ \textstyle\sum_{a,f} \frac{\Tmin_i(c)}{\eta_{i,a}\,\gamma_f}\,v^{a,f}_{i,c}\ \ [\text{per-branch copies of }v\text{; lower bound on }y\text{ only}]\\[-2pt]
+&X_{i,c}=\Tmax_i(c)\,y_{i,c}-\textstyle\sum_k t_i^k(c)\,w_{i,c,k}=\sum_j X_{i,c,j},\quad \underline X_{i,c}\,\nu_j\le X_{i,c,j}\le\Tmax_i(c)\,\nu_j\\[-2pt]
+&\tau_{i,c}\ \ge\ \textstyle\sum_j u_j\,X_{i,c,j}\ \ [\text{bandwidth-menu copies}],\qquad T_i\ge\textstyle\sum_c\tau_{i,c}
 \end{align*}
 \vspace{-8pt}
 
 \underline{\textsc{Interleaved prefill+decode serving} \citep{kwon2023vllm}}
 \vspace{-2pt}
 \begin{align*}
-&T_{\mathrm{serve}}\ge(\theta\,C^{\mathrm{pre}}+N\,C^{\mathrm{dec}})\,v,\quad
- T_{\mathrm{serve}}\ge(\theta\,M^{\mathrm{pre}}+N\,M^{\mathrm{dec}})\,u
+&T_{\mathrm{serve}}\ge\theta\,C^{\mathrm{pre}}+N\,C^{\mathrm{dec}},\quad
+ T_{\mathrm{serve}}\ge\theta\,M^{\mathrm{pre}}+N\,M^{\mathrm{dec}}\quad[\text{lifted streams; }\theta\text{ a constant}]
 \end{align*}
 \vspace{-8pt}
 
 \underline{\textsc{Hardware sizing, the chip inside the LP}}
 \vspace{-2pt}
 \begin{align*}
-&m\,v\ge 1,\quad \beta\,u\ge 1 \quad[\text{exact rotated SOC / tangent cuts}]\\[-1pt]
-&\textstyle\sum_a\alpha_a=1\ \text{(array aspect)},\quad \sum_f\phi_{\mathrm{ph},f}=1\ \text{(DVFS)}\\[-1pt]
-&\mathrm{BW_{eff}}\le\mathrm{BW},\quad \mathrm{BW_{eff}}\le B_{\mathrm{LD}}\ \text{(load engines)} \citep{spector2024thunderkittens}\\[-1pt]
+&v\ge \tfrac{2}{a_g}-\tfrac{m}{a_g^{2}}\ \forall g\ \ [\text{tangent rows; chord rows for the achievable LP}]\\[-1pt]
+&\mathrm{BW}=\textstyle\sum_j\nu_j\mathrm{BW}_j,\ \ u=\sum_j\nu_j u_j,\ \ \sum_j\nu_j=1\ \ [\text{bandwidth menu},\ u_j=1/\mathrm{BW}_j]\\[-1pt]
+&\textstyle\sum_a\alpha_a=1\ \text{(array aspect)},\quad \sum_f\phi_{\mathrm{ph},f}=1\ \text{(DVFS)},\quad \psi_{a,f}\ \text{joint one-hot of }(\alpha_a,\phi_{\mathrm{ph},f})\\[-1pt]
+&\mathrm{BW_{eff}}\le\mathrm{BW},\quad \mathrm{BW_{eff}}\le B_{\mathrm{LD}}\ \text{(load engines) \citep{spector2024thunderkittens}}\\[-1pt]
 &\kappa_{\mathrm{MAC}}\mathrm{MACs}+\kappa_{\mathrm{BW}}\mathrm{BW}+\kappa_{\mathrm{LD}}B_{\mathrm{LD}}+\kappa_{\mathrm{SRAM}}C_{\mathrm{GM}}\le A_{\mathrm{cap}}\\[-1pt]
 &\pi_{\mathrm{MAC}}\mathrm{MACs}+\pi_{\mathrm{bit}}\,\varrho_{\mathrm{DRAM}}\le P_{\mathrm{cap}};\quad \text{6 manufacturability gates}
 \end{align*}
@@ -95,7 +108,8 @@ $\eqref{eq:v1}\subseteq\eqref{eq:v1}\subseteq(\text{this program})$.
 \underline{\textsc{KV budget / eviction $\to$ fit in CGM} \citep{xiao2024streamingllm,zhang2023h2o}}
 \vspace{-2pt}
 \begin{align*}
-&s^{\mathrm{KV}}\,B^{\mathrm{KV}}\,d^{\mathrm{KV}}\le\textstyle\sum_k 2^k h_{\mathrm{GM},k}\quad[\text{KV read served on-chip}]
+&B^{\mathrm{KV}}=\textstyle\sum_{\rho,s}B_{\rho,s},\ \ B_{\min}\pi_{\rho,s}\le B_{\rho,s}\le L_{\mathrm{ctx}}\pi_{\rho,s}\ \ [s\in\{\mathrm{on},\mathrm{off}\}]\\[-1pt]
+&d^{\mathrm{KV}}\textstyle\sum_\rho b^{\mathrm{KV}}_\rho B_{\rho,\mathrm{on}}\le\sum_k 2^k h_{\mathrm{GM},k}\quad[\text{on-chip branch; hull, no big-}M]
 \end{align*}
 \vspace{-8pt}
 
@@ -111,7 +125,7 @@ $\eqref{eq:v1}\subseteq\eqref{eq:v1}\subseteq(\text{this program})$.
 \vspace{-2pt}
 \begin{align*}
 &\widehat C^{\mathrm{pre}}=(1-\eta_{\mathrm{hit}}(C_{\mathrm{cache}}))\,C^{\mathrm{pre}},\quad
- \widehat\Delta^{\mathrm{KV}}=(1-\eta_{\mathrm{hit}})\,\Delta^{\mathrm{KV}}
+ \widehat M^{\mathrm{pre}}=(1-\eta_{\mathrm{hit}})\,M^{\mathrm{pre}}\quad[\text{prefill only}]
 \end{align*}
 \vspace{-8pt}
 
@@ -125,26 +139,108 @@ $\eqref{eq:v1}\subseteq\eqref{eq:v1}\subseteq(\text{this program})$.
 \underline{\textsc{Domains}}
 \vspace{-2pt}
 \begin{align*}
-&y,p,p^W,r,w,z,h,q,\alpha,\phi,g,\chi\in[0,1];\ \ v,u,B_{\mathrm{LD}},B^{\mathrm{KV}},C_{\mathrm{cache}},C_{\mathrm{HBM}}\ge 0
+&y,p,p^W,r,w,z,h,q,\alpha,\phi,\psi,\nu,\pi,g,\chi\in[0,1];\ \ v,u,B_{\mathrm{LD}},B^{\mathrm{KV}},C_{\mathrm{cache}},C_{\mathrm{HBM}}\ge 0
 \end{align*}
 \end{minipage}
 
-\vspace{3pt}\hrule\vspace{3pt}
-\noindent\underline{\textsc{Candidate extensions}} \emph{(discussed; not yet implemented or validated, recorded here for completeness)}\\[3pt]
+\vspace{2pt}
+\end{minipage}}
+\end{center}
+
+\clearpage
+\begin{center}
+\footnotesize
+\setlength{\arraycolsep}{1.5pt}
+\fbox{%
+\begin{minipage}{0.965\linewidth}
+\centering
+\vspace{2pt}
+\textbf{\normalsize The Comprehensive CHEETAH-V1 Program: Extended Families}\\[2pt]
+\emph{\scriptsize part of the program above; each family is written out, and each carries its validation status}\\[2pt]
+\hrule
+\vspace{4pt}
 \scriptsize
 \begin{minipage}[t]{0.485\linewidth}
-$\bullet$~\textbf{Structured sparsity (2:4):} $\sum_\ell\sigma_\ell=1$; $s^{\mathrm{spar}}=\sum_\ell(1{-}z_\ell)\sigma_\ell$ scales $d^W$ \emph{and} MACs; sparse-MAC support carries an area cost.\\[2pt]
-$\bullet$~\textbf{Compute--memory overlap $\kappa$} (async copy / TMA): $\tau_{i,c}\ge\max(\cdot,\cdot)-\kappa\min(\cdot,\cdot)$, $0\le\kappa\le\kappa_{\max}$, gated by an async-DMA-engine area term.\\[2pt]
-$\bullet$~\textbf{Register-file / SMEM $C_{\mathrm{RF}}$ + occupancy:} tile $\le C_{\mathrm{RF}}$; occupancy $O=g(\mathrm{tile},C_{\mathrm{RF}})$; DRAM latency hidden iff $O\ge O_{\min}$ (tile$\leftrightarrow$latency-hiding trade-off, distinct from CGM).\\[2pt]
-$\bullet$~\textbf{Explicit U-shape skip residency:} include skip/concat edges $e\in\mathcal E_{\mathrm{skip}}$ in $p_{e,t}$ and capacity, so down-path features persist for up-path consumers.
+\underline{\textsc{Structured sparsity} $2{:}4$} \hfill\emph{[measured, \cref{app:lp_provenance}]}
+\vspace{-4pt}
+\begin{align*}
+&\textstyle\sum_\ell\sigma_\ell=1,\quad s^{\mathrm{spar}}=\sum_\ell(1-z_\ell)\,\sigma_\ell\ \ \text{scales }d^W\text{ and MACs}\\[-2pt]
+&\kappa_{\mathrm{spar}}\textstyle\sum_{\ell>0}\sigma_\ell\le A_{\mathrm{cap}}\ \ [\text{sparse-MAC support costs area}]
+\end{align*}
+\vspace{-9pt}
+
+\underline{\textsc{Memory-technology selector}} \hfill\emph{[measured, \cref{app:cvx_mapping}]}
+\vspace{-4pt}
+\begin{align*}
+&\textstyle\sum_t m_t=1,\ \ (\kappa_{\mathrm{BW}},\pi_{\mathrm{bit}},\overline{\mathrm{BW}})=\sum_t m_t\,(\kappa^t_{\mathrm{BW}},\pi^t_{\mathrm{bit}},\overline{\mathrm{BW}}^t)\\[-2pt]
+&\mathrm{BW}\le\textstyle\sum_t \overline{\mathrm{BW}}^t m_t\ \ [\text{hull of }m_t\mathrm{BW};\ \text{exact at integral }m]
+\end{align*}
+\vspace{-9pt}
+
+\underline{\textsc{Compute--memory overlap} $\kappa$ (async copy / TMA)} \hfill\emph{[in the program]}
+\vspace{-4pt}
+\begin{align*}
+&\tau_{i,c}\ge(1-\kappa)\,\mathrm{cmp}_{i,c}+\mathrm{mem}_{i,c},\qquad
+ \tau_{i,c}\ge\mathrm{cmp}_{i,c}+(1-\kappa)\,\mathrm{mem}_{i,c}\\[-2pt]
+&[\text{exactly }\tau\ge\mathrm{cmp}+\mathrm{mem}-\kappa\min(\cdot,\cdot)\text{ for a menu constant }0\le\kappa\le\kappa_{\max};\\[-2pt]
+&\ \text{no min column, no McCormick credit; gated by an async-DMA area term}]
+\end{align*}
+\vspace{-9pt}
+
+\underline{\textsc{Register file / SMEM} $C_{\mathrm{RF}}$ \textsc{and occupancy}} \hfill\emph{[in the program]}
+\vspace{-4pt}
+\begin{align*}
+&\textstyle\sum_c \mathrm{tile}_{i,c}\,y_{i,c}\le C_{\mathrm{RF}},\qquad
+ O_i=\textstyle\sum_c o_{i,c}\,y_{i,c},\qquad O_i\ge O_{\min}-\Lambda(1-\beta_i)\\[-2pt]
+&\tau_{i,c}\ \ge\ \tau^{\mathrm{lat}}_{i,c}\,(1-\beta_i)\ \ [\text{DRAM latency hidden only at occupancy }O_{\min};\\[-2pt]
+&\ \text{a tile}\leftrightarrow\text{latency-hiding trade-off distinct from }C_{\mathrm{GM}}]
+\end{align*}
 \end{minipage}%
 \hfill
+\vrule
+\hfill
 \begin{minipage}[t]{0.485\linewidth}
-$\bullet$~\textbf{Tiered KV residency:} hot recent $B_{\mathrm{hot}}$ on-chip ($B_{\mathrm{hot}}s^{\mathrm{KV}}d^{\mathrm{KV}}\le C_{\mathrm{GM}}$), cold $(B^{\mathrm{KV}}{-}B_{\mathrm{hot}})$ streamed from HBM.\\[2pt]
-$\bullet$~\textbf{Winograd / transform support:} per-$3{\times}3$-conv one-hot $\omega_i$; MACs $\times(1-\omega_i(1-r_{\mathrm{Wino}}))$; transform-unit area cost.\\[2pt]
-$\bullet$~\textbf{Memory-technology selector:} one-hot over $\{$HBM, LPDDR, $\dots\}$, each fixing $(\kappa_{\mathrm{BW}},\pi_{\mathrm{bit}},\overline{\mathrm{BW}})$, trades bandwidth against energy.\\[2pt]
-$\bullet$~\textbf{Scalability:} the program is solved by \emph{shape aggregation} (\cref{app:shape_agg}): build over $S$ unique op-shapes with multiplicities, not $N$ operations, for a ${\sim}100\times$ size reduction.
+\underline{\textsc{Tiered KV residency} (hot on-chip / cold streamed)} \hfill\emph{[in the program]}
+\vspace{-4pt}
+\begin{align*}
+&B_{\mathrm{hot}}\,s^{\mathrm{KV}}d^{\mathrm{KV}}\le\textstyle\sum_k 2^k h_{\mathrm{GM},k},\qquad 0\le B_{\mathrm{hot}}\le B^{\mathrm{KV}}\\[-2pt]
+&\Delta^{\mathrm{KV}}=d^{\mathrm{KV}}\textstyle\sum_\rho b^{\mathrm{KV}}_\rho\big(B^{\mathrm{KV}}_\rho-B_{\mathrm{hot},\rho}\big)\ \ [\text{only the cold tail is streamed}]
+\end{align*}
+\vspace{-9pt}
+
+\underline{\textsc{Winograd / transform support}} \hfill\emph{[in the program]}
+\vspace{-4pt}
+\begin{align*}
+&\omega_i\in[0,1]\ \text{per }3{\times}3\ \text{conv},\qquad
+ \mathrm{MACs}_i\times\big(1-\omega_i(1-r_{\mathrm{Wino}})\big)\\[-2pt]
+&\kappa_{\mathrm{tr}}\,\max_i\omega_i\le A_{\mathrm{cap}}\ \ [\text{transform unit costs area; written as }\kappa_{\mathrm{tr}}\omega_i\le A_{\mathrm{cap}}\ \forall i]
+\end{align*}
+\vspace{-9pt}
+
+\underline{\textsc{Explicit U-shape skip residency}} \hfill\emph{[in the program]}
+\vspace{-4pt}
+\begin{align*}
+&\mathcal E_{\mathrm{live}}(t)\ \cup\!=\ \mathcal E_{\mathrm{skip}},\qquad
+ p_{e,t}\le p_{e,t-1}+r_{\mathrm{src}(e),t}\ \ \forall e\in\mathcal E_{\mathrm{skip}}\\[-2pt]
+&[\text{down-path features persist for their up-path consumers, so a long-range}\\[-2pt]
+&\ \text{skip competes for }C_{\mathrm{GM}}\text{ against the sequential chain}]
+\end{align*}
+\vspace{-9pt}
+
+\underline{\textsc{Scalability: shape aggregation}} \hfill\emph{[measured, \cref{app:shape_agg}]}
+\vspace{-4pt}
+\begin{align*}
+&\text{build over }S\text{ unique op-shapes with multiplicities }n_s,\ \text{not }N\text{ operations}\\[-2pt]
+&[{\sim}100\times\text{ size reduction; exact whenever identical shapes share a tile config}]
+\end{align*}
 \end{minipage}
+
+\vspace{3pt}
+\noindent\scriptsize\emph{Status key.} \emph{[measured]} marks a family solved and
+reported in this paper. \emph{[in the program]} marks a family that is written
+out above and carried by the formulation, and whose effect has not yet been
+measured on the suite; it is inert when its selector is pinned off, so the
+reported results are unchanged by its presence.
 \footnotesize
 \vspace{2pt}
 \end{minipage}}
@@ -153,8 +249,8 @@ $\bullet$~\textbf{Scalability:} the program is solved by \emph{shape aggregation
 \vspace{4pt}
 \noindent\small
 Every constraint family reduces to a change in bytes moved, FLOPs, on-chip
-residency, or a hardware parameter, hence a linear, McCormick-, or second-order-cone
-representable addition rather than an outer-loop guess. Fusion and on-chip tiling
+residency, or a hardware parameter, hence a linear or convex-hull (disaggregated
+McCormick) representable addition rather than an outer-loop guess. Fusion and on-chip tiling
 realize FlashAttention-style IO-awareness \citep{dao2022flashattention}; the
 interleaved objective and RadixAttention/paged prefix reuse come from vLLM and
 SGLang \citep{kwon2023vllm,zheng2024sglang}; the load-engine vs.\ compute-worker
