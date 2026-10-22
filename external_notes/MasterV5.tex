@@ -1,0 +1,955 @@
+\documentclass[10pt]{article}
+\usepackage[letterpaper,margin=0.82in]{geometry}
+\usepackage{amsmath,amssymb,amsfonts}
+\usepackage{mathtools}
+\usepackage[T1]{fontenc}
+\usepackage{array}
+\usepackage{longtable}
+\usepackage{tabularx}
+\usepackage{xltabular}
+\usepackage{booktabs}
+\usepackage{xcolor}
+\usepackage{colortbl}
+\usepackage{adjustbox}
+\usepackage{enumitem}
+\usepackage[most]{tcolorbox}
+\usepackage[hidelinks]{hyperref}
+\keepXColumns
+
+\providecommand{\lt}{<}\providecommand{\gt}{>}
+\definecolor{accent}{HTML}{0E5A70}
+\definecolor{built}{HTML}{2C774B}\definecolor{builtbg}{HTML}{E1F0E6}
+\definecolor{newc}{HTML}{95570A}\definecolor{newcbg}{HTML}{F6EAD6}
+\definecolor{datac}{HTML}{5B43A0}\definecolor{datacbg}{HTML}{EAE5F6}
+\definecolor{pinc}{HTML}{687078}\definecolor{pincbg}{HTML}{E9EBEC}
+\definecolor{badc}{HTML}{A23827}\definecolor{badcbg}{HTML}{F6E2DD}
+\definecolor{grpbg}{HTML}{EEF1EC}
+\definecolor{muted}{HTML}{586370}
+
+% status badge
+\newcommand{\badge}[2]{{\footnotesize\sffamily\colorbox{#1bg}{\textcolor{#1}{\,#2\,}}}}
+\newcommand{\famname}[1]{{\small\ttfamily\textcolor{muted}{#1}}}
+% constraint header line
+\newcommand{\eqhead}[1]{\par\smallskip\noindent #1\par}
+\newcommand{\eqgroup}[1]{\par\medskip\noindent{\sffamily\bfseries\large #1}\par}
+
+\newlist{decisions}{itemize}{1}
+\setlist[decisions]{leftmargin=1.2em,itemsep=4pt,topsep=4pt,label=\textcolor{accent}{\textbullet}}
+
+\newtcolorbox{callout}{colback=accent!6,colframe=accent!55,boxrule=0.6pt,
+  arc=1pt,left=8pt,right=8pt,top=6pt,bottom=6pt}
+\newtcolorbox{finding}{colback=newcbg!40,colframe=newc!55,boxrule=0.6pt,
+  arc=1pt,left=8pt,right=8pt,top=6pt,bottom=6pt,breakable}
+
+\setlength{\parindent}{0pt}\setlength{\parskip}{4pt}
+\hbadness=10000 \hfuzz=4pt
+\sloppy\emergencystretch=3em
+\relpenalty=0 \binoppenalty=0
+\renewcommand{\_}{\textunderscore\allowbreak}
+\begin{document}
+ CHEETAH LP v5           
+
+{\small\sffamily\color{accent} CHEETAH $\cdot$ cumulative master program}
+
+
+The single linear program behind every number in the paper. It picks one chip per workload jointly with every admitted library mapping, buffering depth, residency, recomputation, memory placement, numeric format and reuse transform. All of these are selectors of one root program; branches only fix root selectors to tighten bounds. Every set, parameter, variable and constraint is written out below and tied to the code family that builds it. Speculative decoding is pinned off for now.
+
+ 
+
+{\small\ttfamily 2026-09-22 $\cdot$ built on Plan 1 (\texttt{cheetah\_joint/joint\_lp.py}, \texttt{run\_e2e.py}) $\cdot$ 12 workloads: Llama-1 13B, 65B $\cdot$ Llama-3 70B $\cdot$ DeepSeek-V3 $\cdot$ SD-1.5 UNet $\cdot$ EfficientNet B1--B7}
+
+   
+\section*{01\quad Decisions this program encodes}
+ 
+\begin{decisions}
+ 
+\item \textbf{One root program} Every admitted choice is a selector of one root LP, including weight format, KV format and the DeepCache interval, eq. (53). Branches fix root selectors to tighten bounds and recover designs. A test checks that fixing the root reproduces each separately built branch. Single-family runs are for debugging only.
+ 
+\item \textbf{One chip per workload} No chip shared across scenarios, no multi-device parallelism.
+ 
+\item \textbf{Speculation pinned off} Its rows are written out, eq. (51), including the MoE expert-union verification traffic. The selector is fixed at K = 0.
+ 
+\item \textbf{Contract fixed} Batch, prompt, output length, KV bins and shared-prefix structure come from the workload contract. Batching is not a decision.
+ 
+\item \textbf{Quality through evidence} A format or approximation can be selected only if the accuracy menu admits it for that model, eq. (47). A combination needs joint evidence or has to fit the tolerance budget, eq. (46).
+ 
+\item \textbf{Baselines named for what they are} The \emph{TPU-v3 resource-matched tiled proxy} (256 $\times$ 16$\times$16 tiles, 128 KiB slices, HBM 900) is a feasible point of v5. \emph{Baseline A} is FAST's recipe scaled up from an 8$\times$8 reference mapping. Neither is topology-faithful (2 cores $\times$ 2 MXUs of 128$\times$128, vector units, BF16), so a claim about an unchanged TPU-v3 needs a third, faithful model.
+ 
+\item \textbf{Same numerical contract} Every comparison states its datatype. Our runs are W8A8 on both sides. A FAST comparison needs BF16 on both sides; switching quantization off is not enough.
+ 
+\item \textbf{Monotone incumbents} Every earlier-stage design is evaluated as a candidate, so v5's U $\le$ the U of every earlier stage.
+ 
+\item \textbf{Scenario contracts are workloads} Shared prefixes apply only where the contract declares them; \texttt{\_\_prefix25} is its own workload. Chunked prefill is a steady-state serving workload measured in time per batch turnover, as its contract says. It is not a branch of fixed-batch latency, because a sequence cannot decode before its own prompt is done.\hfill\badge{newc}{assumption}
+ 
+\item \textbf{Two admission columns} Headline: v5 with every admitted family. Second: the same v5 with exact families only, because FAST excludes quantization. Both are complete cumulative solves.\hfill\badge{newc}{assumption}
+ 
+\end{decisions}
+   
+\section*{02\quad Coverage across the workloads}
+ 
+
+{\small \textbf{$\bullet$} on in the cumulative solve \textbf{$\circ$} in the program, no instance or no effect yet \textbf{$\oslash$} pinned off (accuracy menu or decision) \textbf{--} not applicable}
+
+ 
+
+{\small \badge{built}{built} in Stage 2 code, tested \badge{newc}{new rows}, existing or datasheet data \badge{datac}{new data} needs new Timeloop run \badge{pinc}{formulated} written, pinned \badge{badc}{defect} bug}
+
+                                                   
+\begingroup\scriptsize
+\setlength{\tabcolsep}{3pt}
+\renewcommand{\arraystretch}{1.18}
+\begin{xltabular}{\textwidth}{@{}c >{\hsize=1.000\hsize\raggedright\arraybackslash}X l c c c l c l l@{}}
+\toprule
+\textbf{ID} & \textbf{Family} & \textbf{Eqs} & \textbf{13B} & \textbf{65B} & \textbf{70B} & \textbf{DS-V3} & \textbf{SD} & \textbf{B1--B7} & \textbf{Status}\\
+\midrule\endhead
+\multicolumn{10}{@{}l}{\cellcolor{grpbg}\textbf{Hardware (one chip)}}\\
+H1 & PE type $\times$ tile count & 1 2 7 21 22 25 & $\bullet$ & $\bullet$ & $\bullet$ & $\bullet$ & $\bullet$ & $\bullet$ & \badge{built}{built} \badge{newc}{+128 KiB}\\
+H2 & Bandwidth $\times$ memory technology & 3--6 & $\bullet$ & $\bullet$ & $\bullet$ & $\bullet$ & $\bullet$ & $\bullet$ & \badge{built}{built}\\
+H3 & Memory capacity (frontier ratio, package cap) & 12 42 & $\bullet$ & $\bullet$ & $\bullet$ & $\bullet$ & $\circ$ & $\circ$ & \badge{newc}{new rows}\\
+H4 & Delivered bandwidth: $\eta$, DMA/NoC area, latency (Little) & 6 8 28 & $\bullet$ & $\bullet$ & $\bullet$ & $\bullet$ & $\bullet$ & $\bullet$ & \badge{newc}{new rows}\\
+H5 & Per-phase DVFS, interface power & 10 & $\circ$ & $\circ$ & $\circ$ & $\circ$ & $\circ$ & $\circ$ & \badge{newc}{inert: power slack}\\
+H6 & Chip features, converter throughput & 8 11 29 45 & $\bullet$ & $\bullet$ & $\bullet$ & $\bullet$ & $\bullet$ & $\bullet$ & \badge{built}{built} \badge{newc}{+ new}\\
+H7 & Gates: area, power, SRAM macro, pins & 6 8--10 & $\bullet$ & $\bullet$ & $\bullet$ & $\bullet$ & $\bullet$ & $\bullet$ & \badge{built}{built}\\
+H8 & Total power at peak activity (TDP), crossbar and logic-depth proofs & 55 56 & $\bullet$ & $\bullet$ & $\bullet$ & $\bullet$ & $\bullet$ & $\bullet$ & \badge{newc}{new rows}\\
+\multicolumn{10}{@{}l}{\cellcolor{grpbg}\textbf{Execution}}\\
+X1 & Mode selection, copies, mass & 18--20 23 24 & $\bullet$ & $\bullet$ & $\bullet$ & $\bullet$ & $\bullet$ & $\bullet$ & \badge{built}{built}\\
+X2 & Compute and memory epigraphs & 25 27 32 & $\bullet$ & $\bullet$ & $\bullet$ & $\bullet$ & $\bullet$ & $\bullet$ & \badge{built}{built}\\
+X3 & Overlap with pipeline fill/drain & 31 & $\bullet$ & $\bullet$ & $\bullet$ & $\bullet$ & $\bullet$ & $\bullet$ & \badge{newc}{new rows}\\
+X4 & Dequantization / conversion on the load path & 29 30 & $\bullet$ & $\bullet$ & $\bullet$ & $\bullet$ & $\circ$ & $\circ$ & \badge{newc}{new rows}\\
+X5 & Split-KV decode attention & \S{} transforms & $\bullet$ & $\bullet$ & $\bullet$ & $\bullet$ & -- & -- & \badge{datac}{new data}\\
+X6 & Host link engine, prefetch vs direct & 27 34 43 44 & $\bullet$ & $\bullet$ & $\bullet$ & $\bullet$ & $\circ$ & $\circ$ & \badge{newc}{new rows}\\
+X7 & Near-memory (PIM) engine & 52 & $\oslash$ & $\oslash$ & $\oslash$ & $\oslash$ & $\oslash$ & $\oslash$ & \badge{pinc}{formulated}\\
+X8 & Vector unit: softmax, norms, activations, SE, Winograd transforms & 54 & $\bullet$ & $\bullet$ & $\bullet$ & $\bullet$ & $\bullet$ & $\bullet$ & \badge{newc}{new rows}\\
+\multicolumn{10}{@{}l}{\cellcolor{grpbg}\textbf{Memory and residency}}\\
+M1 & Typed-edge residency, all-live capacity, U-skips, fusion & 13 33 35 36 38 & $\bullet$ & $\bullet$ & $\bullet$ & $\bullet$ & $\bullet$ & $\bullet$ & \badge{built}{built}\\
+M2 & Per-consumer release & 14 & $\bullet$ & $\bullet$ & $\bullet$ & $\bullet$ & $\bullet$ & $\bullet$ & \badge{built}{built}\\
+M3 & Rematerialization & 16 17 26 & $\circ$ & $\circ$ & $\circ$ & $\circ$ & $\bullet$ & $\bullet$ & \badge{built}{built}\\
+M4 & Tiered memory per class and format & 39--42 & $\bullet$ & $\bullet$ & $\bullet$ & $\bullet$ & $\circ$ & $\circ$ & \badge{badc}{blocked}\\
+M5 & MoE expert union, expert residency & \S{} transforms 39 & -- & -- & -- & $\bullet$ & -- & -- & \badge{built}{built}\\
+M6 & KV window on chip, cold tail from fast tier or host & 15 37 40 & $\bullet$ & $\bullet$ & $\bullet$ & $\bullet$ & -- & -- & \badge{built}{built}\\
+\multicolumn{10}{@{}l}{\cellcolor{grpbg}\textbf{Numeric representation (quality-gated)}}\\
+P1 & Weight format per weight identity & 39 41 47 & $\bullet$ & $\bullet$ & $\oslash$ & $\bullet$ & $\oslash$ & $\oslash$ & \badge{newc}{tie per identity}\\
+P2 & KV format (K, V separately, residual window) & 15 37 40 42 53 & $\bullet$ & $\bullet$ & $\bullet$ & $\oslash$ & -- & -- & \badge{newc}{root selector}\\
+P3 & Static 2:4 sparsity & \S{} transforms 45 & $\oslash$ & $\oslash$ & $\oslash$ & $\oslash$ & $\oslash$ & $\bullet$ & \badge{badc}{defect}\\
+P4 & Per-expert mixed precision & 41 & -- & -- & -- & $\circ$ & -- & -- & \badge{pinc}{inert: uniform routing}\\
+P5 & Admission and combination & 46 47 & $\bullet$ & $\bullet$ & $\bullet$ & $\bullet$ & $\bullet$ & $\bullet$ & \badge{newc}{new rows}\\
+\multicolumn{10}{@{}l}{\cellcolor{grpbg}\textbf{Exact reuse transforms}}\\
+R1 & Winograd F(2$\times$2, 3$\times$3) & \S{} transforms 45 & -- & -- & -- & -- & $\bullet$ & -- & \badge{badc}{defect}\\
+R2 & Shared-prefix decode attention (Hydragen) & \S{} transforms & $\circ$ & $\circ$ & $\circ$ & $\circ$ & -- & -- & \badge{datac}{new data}\\
+R3 & Prefix prefill reuse & \S{} transforms & $\circ$ & $\circ$ & $\circ$ & $\circ$ & -- & -- & \badge{built}{built}\\
+R4 & Chunked-prefill interleaving & own workload & $\circ$ & $\circ$ & $\circ$ & $\circ$ & -- & -- & \badge{newc}{steady-state workload}\\
+\multicolumn{10}{@{}l}{\cellcolor{grpbg}\textbf{Quality-gated approximations}}\\
+Q1 & DeepCache & 53 & -- & -- & -- & -- & $\bullet$ & -- & \badge{newc}{root selector}\\
+Q2 & KV eviction budget & 48 & $\oslash$ & $\oslash$ & $\oslash$ & $\oslash$ & -- & -- & \badge{pinc}{formulated}\\
+Q3 & Query-aware page selection & 49 & $\oslash$ & $\oslash$ & $\oslash$ & $\oslash$ & -- & -- & \badge{pinc}{formulated}\\
+Q4 & Contextual sparsity & 50 & $\oslash$ & $\oslash$ & $\oslash$ & $\oslash$ & -- & -- & \badge{pinc}{formulated}\\
+Q5 & Speculative decoding & 51 & $\oslash$ & $\oslash$ & $\oslash$ & $\oslash$ & -- & -- & \badge{pinc}{pinned off}\\
+\multicolumn{10}{@{}l}{\cellcolor{grpbg}\textbf{Scenario and objective}}\\
+S1 & Latency objective with tie-breaks; minimal chip at the certified latency & 0 0B & $\bullet$ & $\bullet$ & $\bullet$ & $\bullet$ & $\bullet$ & $\bullet$ & \badge{built}{built} \badge{newc}{+ $\varepsilon$, (0B)}\\
+S2 & Discrete branches & \S{} certificate & $\bullet$ & $\bullet$ & $\bullet$ & $\bullet$ & $\bullet$ & $\bullet$ & \badge{newc}{new driver}\\
+\bottomrule\end{xltabular}\endgroup
+  
+
+Admission, as recorded in the contracts:
+
+ 
+\begin{itemize}
+ \item \textbf{W4:} admitted for 13B (AWQ, 5.09$\to$5.19 ppl), 65B (3.53$\to$3.62) and DeepSeek (Q4\_K\_M). Not admitted for 70B (2.9$\to$3.3).
+ \item \textbf{KV4:} admitted for all three Llamas (KVQuant), not for DeepSeek.
+ \item \textbf{2:4:} not admitted for the LLMs (Wanda, 5.09$\to$9.11). Admitted for EfficientNet by extrapolating from B0 (77.29 vs 77.25).
+ \item \textbf{DeepCache N = 2:} admitted (CLIP 29.54 vs 29.51).
+ \item R2 and R3 turn on in the \texttt{\_\_prefix25} workloads.
+ 
+\end{itemize}
+   
+\section*{03\quad The full program}
+ 
+\subsection*{3.0\quad Conventions}
+ 
+\begin{itemize}
+ \item Time is in ms. $\mathrm{TS}=10^6$ cycles, which is 1 ms at 1 GHz. Bytes divided by GB/s gives ns, and dividing by $\mathrm{TS}$ gives ms.
+ \item Every selector ($\alpha,\allowbreak{}m,\allowbreak{}\nu,\allowbreak{}\theta,\allowbreak{}z,\allowbreak{}y,\allowbreak{}\mu,\allowbreak{}q,\allowbreak{}\chi,\allowbreak{}\upsilon,\allowbreak{}\psi$) is continuous on $[0,\allowbreak{}1]$. Integrality comes back through recovery, and the gap certifies it.
+ \item A product of a selector with a menu constant is written as disaggregated copies (a hull), which is exact at integral selections. A reciprocal of a continuous resource is a perspective tangent cut, which is a valid lower bound.
+ \item The monospace label under each row is the \texttt{C.fam\_in}/\texttt{C.fam\_eq} family name in \texttt{joint\_lp.py}. \badge{newc}{v5} marks a row or term that is new.
+ \item Release on is the general form. With release off, $p^{\rm rd}_{e,\allowbreak{}\ell}=p^{\rm hd}_{e,\allowbreak{}\ell}=p_e$ for every $\ell$.
+ 
+\end{itemize}
+ 
+\subsection*{3.1\quad Index sets}
+                           
+\begingroup\scriptsize
+\setlength{\tabcolsep}{3pt}
+\renewcommand{\arraystretch}{1.18}
+\begin{xltabular}{\textwidth}{@{}>{\hsize=0.572\hsize\raggedright\arraybackslash}X >{\hsize=1.487\hsize\raggedright\arraybackslash}X >{\hsize=0.941\hsize\raggedright\arraybackslash}X@{}}
+\toprule
+\textbf{Set} & \textbf{Elements} & \textbf{Notes}\\
+\midrule\endhead
+$\mathcal O=\{1,\allowbreak{}\dots,\allowbreak{}n\}$ & Ops in execution order & Per op for CNN and SD. Op groups for the LLMs (prefill; decode per KV bin)\\
+$\mathcal O^{\rm pl},\allowbreak{}\ \mathcal O^{\rm opt}$ & Ops with no mass expression; members of copy groups and recompute copies & $\mathcal O^{\rm rc}\subset\mathcal O^{\rm opt}$: recompute copies\\
+$\mathcal S,\allowbreak{}\ \mathcal O^{(s)}$ & Program blocks: alternative programs of the same task with their own ops and time axis (DeepCache $N_{\rm dc}\in\{1,\allowbreak{}2\}$ for SD) & \badge{newc}{v5}: selected in the root, eq. (53)\\
+$\mathcal P^{\rm KV}$ & KV formats $\rho$ admitted for the model (8-bit; 4-bit with K and V grouped separately) & \badge{newc}{v5}: selected in the root\\
+$\mathfrak G,\allowbreak{}\ \mathfrak G^{\ge2}$ & Alternative groups: a plain op with its copies (Winograd, 2:4, W4, W4n, split-KV) & $i_0(G)$: the plain member\\
+$\mathcal A$ & PE types $a=(\text{aspect},\allowbreak{}\omega_a)$: \{16$\times$16, 8$\times$32, 32$\times$8\} $\times$ $\omega\in\{256,\allowbreak{}1024\}$ KiB, plus (16$\times$16, 128 KiB) & 7 types. \badge{newc}{v5} adds the 128 KiB slice\\
+$\mathcal G$ & GLB policies \{all, bypass, W\_only, I\_only, O\_only\} & \\
+$\mathcal D$ & Buffering depth $d\in\{1,\allowbreak{}2,\allowbreak{}3\}$ & \badge{newc}{v5} adds $d=3$\\
+$\mathcal K=\mathcal A\times\mathcal G\times\mathcal D,\allowbreak{}\ \mathcal K_a$ & Modes $k=(a,\allowbreak{}g,\allowbreak{}d)$; the modes of type $a$ & 105 modes; 15 per branch\\
+$\mathcal J$ & Delivered bandwidth $B_j\in\{225,\allowbreak{}450,\allowbreak{}675,\allowbreak{}900,\allowbreak{}1350,\allowbreak{}1800,\allowbreak{}2400,\allowbreak{}3200\}$ GB/s & Legal if the installed $B_j/\eta_t\le B_{\rm pin}=3276.8$\\
+$\mathcal T$ & Memory technologies \{HBM, LPDDR, GDDR\} & \\
+$\mathcal Z$ & Tangent anchors $\zeta$: geometric on $[1,\allowbreak{}\bar n]$, relative error $\le$ $\epsilon=10^{-2}$ & 36 anchors for eq. (25); 8 for eq. (28)\\
+$\mathcal E$ & Retainable tensors $e$: producer $s(e)$, consumers $c_1(e)\lt\dots\lt c_{L_e}(e)$, size $\sigma_e$ MiB & $\mathcal C(e)$, ${\rm last}(e)=c_{L_e}(e)$\\
+$\mathcal E^{\rm In}_i,\allowbreak{}\ \mathcal E^{\rm W}_i,\allowbreak{}\ \mathcal E^{\rm A}_i,\allowbreak{}\ {\rm out}(i)$ & Tensors op $i$ consumes, by kind (Inputs, Weights, add), with bytes $b_{e,\allowbreak{}i}$; its output & Typed edges\\
+$\mathcal R$ & Recompute pairs $(e,\allowbreak{}c)$: the copy ${\rm rc}(e,\allowbreak{}c)$ of $s(e)$ placed just before $c$ & $\mathcal N(e,\allowbreak{}c)$: tensors the copy rereads from DRAM\\
+$\mathcal V,\allowbreak{}\ \mathcal V_f$ & Mass variables (one per copy group and per recompute pair); those of family $f$ & \\
+$\mathcal X$ & Chip features \{wino, sp24, w4mac\} & \badge{newc}{v5} adds w4mac\\
+$\mathcal U$ & Converter throughput points $u$, with $U_0=0$ & \badge{newc}{v5}\\
+$\mathcal B,\allowbreak{}\ \mathcal O^{\rm KV}_b$ & KV bins $b\in\{1,\allowbreak{}2,\allowbreak{}3,\allowbreak{}4\}$; decode attention ops reading bin $b$ & \\
+$\Gamma,\allowbreak{}\ \mathcal O^\Gamma,\allowbreak{}\ {\rm cls}(i)$ & Weight classes by weight identity (all routed experts of one matrix type form one class); ops reading a class & \\
+$\mathcal F$ & Weight formats $\rho\in\{\text{w8},\allowbreak{}\text{w4},\allowbreak{}\text{w4n}\}$ & w4n = native W4 MAC\\
+$\Phi,\allowbreak{}\ \mathcal O_p$ & Phases (LLM: prefill and 4 decode bins; SD: step; CNN: one pass); ops in phase $p$ & \\
+\bottomrule\end{xltabular}\endgroup
+ 
+\subsection*{3.2\quad Parameters}
+                                       
+\begingroup\scriptsize
+\setlength{\tabcolsep}{3pt}
+\renewcommand{\arraystretch}{1.18}
+\begin{xltabular}{\textwidth}{@{}>{\hsize=0.470\hsize\raggedright\arraybackslash}X >{\hsize=2.024\hsize\raggedright\arraybackslash}X l >{\hsize=0.506\hsize\raggedright\arraybackslash}X@{}}
+\toprule
+\textbf{Symbol} & \textbf{Definition} & \textbf{Units} & \textbf{Source}\\
+\midrule\endhead
+\multicolumn{4}{@{}l}{\cellcolor{grpbg}\textbf{Per op and mode, from the Timeloop record of (spec(i), aspect, $\omega$, g) with the op's rescale $\varsigma$}}\\
+$n_i=n^{\rm ser}_i\,\allowbreak{}n^{\rm par}_i,\allowbreak{}\ r_i$ & Instances folded into the op: serial repetitions (layers that run one after another) times parallel instances (heads $\times$ sequences; experts within one layer). $r_i$ = repetitions per task (\texttt{weight}: decode steps in the bin, DeepCache 1/N for deep ops) & -- & program, \badge{newc}{v5 split}\\
+$D_{i,\allowbreak{}k}$ & $n_i\max\{\varsigma^{\rm cyc}\,\allowbreak{}\mathrm{cyc}_{i,\allowbreak{}a,\allowbreak{}g},\allowbreak{}\ P^{\rm GLB}_{i,\allowbreak{}a,\allowbreak{}g}/(16\,\allowbreak{}b_w)\}/\mathrm{TS}$: MAC cycles or the GLB port time on one tile & ms at 1 GHz & Timeloop\\
+$Q^{\rm In}_{i,\allowbreak{}k},\allowbreak{}Q^{\rm W}_{i,\allowbreak{}k},\allowbreak{}Q^{\rm O}_{i,\allowbreak{}k}$ & $n_i\,\allowbreak{}\varsigma^{\bullet}\times$ DRAM bytes of that dataspace & bytes & Timeloop\\
+$A_i,\allowbreak{}\ A^{\rm ret}_i$ & Bytes of the add-kind reads (residual, bias, SE scale, pooling); the retainable part & bytes & program\\
+$E_i$ & Extra bytes, charged and never credited: recompute addend rereads, split-KV and Hydragen merge bytes & bytes & program\\
+$Q_{i,\allowbreak{}k}$ & $Q^{\rm In}+Q^{\rm W}+Q^{\rm O}+A_i+E_i-\mathbb 1[\text{no output write}]\,\allowbreak{}Q^{\rm O}$ & bytes & derived\\
+$Q^{\rm nc}_{i,\allowbreak{}k}$ & $Q_{i,\allowbreak{}k}$ minus every byte a credit could remove (the non-creditable traffic) & bytes & derived, \badge{newc}{v5}\\
+$Q^{\rm hs}_{i,\allowbreak{}k}$ & Host-servable bytes: $Q^{\rm W}$ for weight-class ops, $Q^{\rm In}$ (the cache read) for KV ops, 0 otherwise & bytes & derived\\
+$W_{i,\allowbreak{}k}$ & $d\cdot\mathrm{ws}_{i,\allowbreak{}a,\allowbreak{}g}$: per-tile GLB workspace & bytes & Timeloop\\
+$\bar n_i$ & $\min\{\bar n,\allowbreak{}\ \max(1,\allowbreak{}\max(n^{\rm par}_i,\allowbreak{}1)\,\allowbreak{}{\rm out}_i/16)\}$: only parallel instances add useful tiles. Today's code uses $n_i$, which treats 40--80 serial layers as concurrent; the only designs affected are 4 DeepSeek router ops, which are memory-bound, so latency is unchanged & tiles & shape, \badge{newc}{v5 fix}\\
+$E^{\rm v}_i$ & Vector work attached to op $i$: softmax (exp, sum, divide), RMS/LayerNorm, SiLU/GELU/swish, SE sigmoid and scale, residual adds; Winograd transforms $\lceil P/2\rceil\lceil Q/2\rceil N(32C+24M)$ & elem-ops & shape, \badge{newc}{v5}\\
+$a_V,\allowbreak{}\ p_V,\allowbreak{}\ p_S,\allowbreak{}\ P_x,\allowbreak{}\ P_u,\allowbreak{}\ P_{\rm TDP}$ & Area and peak power per vector lane; SRAM power per MiB; feature and converter power; total power cap & mm\textsuperscript{2}, W & declared, \badge{newc}{v5}\\
+$\vartheta_{i,\allowbreak{}k}$ & $1/n^{\rm st}_{i,\allowbreak{}a,\allowbreak{}g}$ for $d\ge2$: pipeline fill/drain fraction. $n^{\rm st}$ is the product of the DRAM-level temporal loop bounds in \texttt{timeloop-mapper.map.txt} & -- & parsed from existing runs, \badge{newc}{v5}\\
+$\beta_{i,\allowbreak{}k}$ & $\max(d-1,\allowbreak{}1)\cdot\mathrm{ws}_{i,\allowbreak{}a,\allowbreak{}g}$: bytes one tile can hold in flight & bytes & Timeloop, \badge{newc}{v5}\\
+$X_{i,\allowbreak{}k}$ & Elements converted: weights per read for w4; cache elements per read plus appends for low-bit KV & elements & shape, \badge{newc}{v5}\\
+\multicolumn{4}{@{}l}{\cellcolor{grpbg}\textbf{Chip}}\\
+$A_{\rm tile},\allowbreak{}\ a_S$ & $256\cdot$\texttt{MM2\_PER\_MAC}; mm\textsuperscript{2} per MiB of SRAM (\texttt{MM2\_PER\_MB\_SRAM}) & mm\textsuperscript{2} & \texttt{feasibility\_checks}\\
+$k_t$ & Interface PHY per installed GB/s: HBM \texttt{MM2\_PER\_DRAM\_CHANNEL}/100, LPDDR 0.020, GDDR 0.050 & mm\textsuperscript{2} per GB/s & \texttt{Menus.memtech\_kbw}\\
+$k^{\rm DMA},\allowbreak{}\ k^{\rm NoC}$ & DMA engine and on-chip network area per delivered GB/s & mm\textsuperscript{2} per GB/s & declared proxy, \badge{newc}{v5}\\
+$A_x,\allowbreak{}\ A_u$ & Feature area (30 mm\textsuperscript{2} declared for wino and sp24; w4mac declared); converter point area & mm\textsuperscript{2} & declared\\
+$A_{\rm cap}$ & 600 (reticle) or 132.2 (TPU-v3 area in this model) & mm\textsuperscript{2} & run\\
+$\bar S,\allowbreak{}\ \bar C_{\rm p},\allowbreak{}\ \bar n,\allowbreak{}\ n_{\rm lo}$ & 244.14 MiB (4096 macros $\times$ 64 KB); 4096 MiB; $600/A_{\rm tile}$ tiles; 1 &  & gates\\
+$P_{\rm tile}(f)$ & $256\times0.5\times0.4\,\allowbreak{}\text{mW}=0.0512$ W at $f_0$, scaled by $(f/f_0)(V(f)/V_0)^2$ & W & gates, \badge{newc}{v5} DVFS\\
+$\pi^{\rm bit}_t$ & On-die interface energy & pJ/bit & declared, \badge{newc}{v5}\\
+$\bar B_t,\allowbreak{}\ B_{\rm pin}$ & Technology ceilings (HBM 8000, LPDDR 500, GDDR 2000); 3276.8 GB/s pin limit & GB/s & menus\\
+$\eta_t,\allowbreak{}\ L_t$ & Delivered/peak bandwidth ratio; loaded memory latency & --, ns & measured on H100 (HBM3) and 5090 (GDDR7); LPDDR from Grace, \badge{newc}{v5}\\
+$\gamma_t,\allowbreak{}\ \bar C_t$ & Capacity per installed GB/s at the shipped frontier (HBM 256/6000, MI325X; LPDDR5X 480/512, GH200; GDDR7 96/1792, RTX PRO 6000); package capacity cap & GB per GB/s; GB & datasheets (verify in Phase 0), \badge{newc}{v5}\\
+$W_{\rm host}$ & Host link & 64 GB/s & \texttt{HOST\_GBPS}\\
+$U_u,\allowbreak{}\ f_p$ & Converter throughput; clock of phase $p$ (branch constant) & elem/cycle; GHz & declared, \badge{newc}{v5}\\
+\multicolumn{4}{@{}l}{\cellcolor{grpbg}\textbf{Memory classes and quality}}\\
+$K_b$ & Bytes of the whole KV cache at bin $b$ (all layers, sequences, positions), in the branch's KV format & bytes & contract\\
+$S_\gamma,\allowbreak{}\ b_\rho$ & Bytes of class $\gamma$ at 8 bits; bytes per weight in format $\rho$ (w8 1, w4 from the menu: 0.5, or 0.61 for Q4\_K\_M) & bytes; -- & \texttt{tiered\_menu}, accuracy menu\\
+$\Delta q_f,\allowbreak{}\ \epsilon$ & Quality change of family $f$ for the model; tolerance & ppl, acc., CLIP & accuracy menu\\
+\bottomrule\end{xltabular}\endgroup
+ 
+\subsection*{3.3\quad Decision variables}
+                                        
+\begingroup\scriptsize
+\setlength{\tabcolsep}{3pt}
+\renewcommand{\arraystretch}{1.18}
+\begin{xltabular}{\textwidth}{@{}>{\hsize=0.534\hsize\raggedright\arraybackslash}X l l >{\hsize=1.466\hsize\raggedright\arraybackslash}X l l@{}}
+\toprule
+\textbf{Variable} & \textbf{Index} & \textbf{Domain} & \textbf{Meaning} & \textbf{Code} & \textbf{Status}\\
+\midrule\endhead
+\multicolumn{6}{@{}l}{\cellcolor{grpbg}\textbf{Chip}}\\
+$\alpha_a$ & $a\in\mathcal A$ & [0,1] & PE type selected & \texttt{alpha} & \badge{built}{built}\\
+$N_a$ & $a$ & [0, $\bar n$] & Tiles of type $a$ installed & \texttt{N} & \badge{built}{built}\\
+$C_{\rm gm}$ & -- & [0, 256] MiB & Sum of the tiles' GLB slices & \texttt{cgm} & \badge{built}{built}\\
+$C_{\rm p}$ & -- & [0, $\bar C_{\rm p}$] MiB & Persistent buffer (retained tensors, KV window) & \texttt{cp} & \badge{built}{built}\\
+$m_t$ & $t\in\mathcal T$ & [0,1] & Memory technology & \texttt{m} & \badge{built}{built}\\
+$\nu_j$ & $j\in\mathcal J$ & [0,1] & Delivered bandwidth point & \texttt{nu} & \badge{built}{built}\\
+$\theta_{j,\allowbreak{}t}$ & $j,\allowbreak{}t$ & [0,1] & Joint (bandwidth, technology) hull & \texttt{wbt} & \badge{built}{built}\\
+$\chi_x$ & $x\in\mathcal X$ & [0,1] & Chip feature installed & \texttt{feat:x} & \badge{built}{built} \badge{newc}{+w4mac}\\
+$V$ & -- & $\ge$ 0 lanes & Vector unit width (element ops per cycle) & \texttt{--} & \badge{newc}{v5}\\
+$\upsilon_u$ & $u\in\mathcal U$ & [0,1] & Converter throughput point & \texttt{--} & \badge{newc}{v5}\\
+$C_{\rm st}$ & -- & $\ge$ 0 GB & Fast-tier staging space for prefetched bytes & \texttt{--} & \badge{newc}{v5}\\
+\multicolumn{6}{@{}l}{\cellcolor{grpbg}\textbf{Residency and copies}}\\
+$p^{\rm rd}_{e,\allowbreak{}\ell}$ & $e\in\mathcal E,\allowbreak{}\ \ell\le L_e$ & [0,1] & Fraction of $e$ consumer $\ell$ reads on chip & \texttt{pc:e (p)} & \badge{built}{built}\\
+$p^{\rm hd}_{e,\allowbreak{}\ell}$ & $e,\allowbreak{}\ \ell$ & [0,1] & Fraction of $e$ held during interval $\ell$ & \texttt{py:e (p)} & \badge{built}{built}\\
+$h_{b,\allowbreak{}\rho}$ & $b\in\mathcal B,\allowbreak{}\ \rho\in\mathcal P^{\rm KV}$ & [0,1] & KV positions held on chip, all layers, in format $\rho$ & \texttt{h} & \badge{built}{built} \badge{newc}{by format}\\
+$\sigma_s,\allowbreak{}\ \sigma^{\rm KV}_\rho$ & $s\in\mathcal S,\allowbreak{}\ \rho\in\mathcal P^{\rm KV}$ & [0,1] & Program block selected; KV format selected & \texttt{--} & \badge{newc}{v5}\\
+$\mu_v$ & $v\in\mathcal V$ & [0,1] & Mass of a copy (Winograd, 2:4, W4, split-KV) or recompute share $\mu^{\rm rc}_{e,\allowbreak{}c}$ & \texttt{m:v} & \badge{built}{built}\\
+$\psi_f$ & family $f$ & [0,1] & Family used anywhere (quality budget) & \texttt{--} & \badge{newc}{v5}\\
+\multicolumn{6}{@{}l}{\cellcolor{grpbg}\textbf{Tiers and formats}}\\
+$q_{\gamma,\allowbreak{}\rho}$ & $\gamma\in\Gamma,\allowbreak{}\ \rho\in\mathcal F$ & [0,1] & Share of class $\gamma$ stored in format $\rho$ & \texttt{--} & \badge{newc}{v5}\\
+$g_{\gamma,\allowbreak{}\rho}$ & $\gamma,\allowbreak{}\rho$ & [0,1] & Share of class $\gamma$, format $\rho$, in the fast tier & \texttt{gW} & \badge{built}{built} \badge{newc}{by format}\\
+$h^{\rm F}_{b,\allowbreak{}\rho}$ & $b,\allowbreak{}\rho$ & [0,1] & KV of bin $b$, format $\rho$, in the fast tier & \texttt{hF} & \badge{built}{built} \badge{newc}{by format}\\
+\multicolumn{6}{@{}l}{\cellcolor{grpbg}\textbf{Per op $i$, mode $k$, bandwidth point $j$}}\\
+$z_{i,\allowbreak{}k}$ & $i,\allowbreak{}k$ & [0,1] & Op runs in mode $k$ & \texttt{z\{i\}} & \badge{built}{built}\\
+$N_{i,\allowbreak{}k}$ & $i,\allowbreak{}k$ & [0, $\bar n$] & Tiles the op uses in mode $k$ (perspective copy) & \texttt{Nk\{i\}} & \badge{built}{built}\\
+$y_{i,\allowbreak{}k,\allowbreak{}j}$ & $i,\allowbreak{}k,\allowbreak{}j$ & [0,1] & Mode $\times$ bandwidth hull & \texttt{w\{i\}} & \badge{built}{built}\\
+$t^{\rm c}_{i,\allowbreak{}k},\allowbreak{}\ t^{\rm m}_{i,\allowbreak{}k},\allowbreak{}\ \tau_{i,\allowbreak{}k}$ & $i,\allowbreak{}k$ & $\ge$ 0 ms & Compute, memory and mode time & \texttt{tc tm tau} & \badge{built}{built}\\
+$t^{\rm cv}_{i,\allowbreak{}k},\allowbreak{}\ t^{\rm ld}_{i,\allowbreak{}k}$ & $i,\allowbreak{}k$ & $\ge$ 0 ms & Conversion time; load-path time & \texttt{--} & \badge{newc}{v5}\\
+$x^{\rm cv}_{i,\allowbreak{}k,\allowbreak{}u}$ & $i,\allowbreak{}k,\allowbreak{}u$ & [0,1] & Mode $\times$ converter hull & \texttt{--} & \badge{newc}{v5}\\
+$T_i$ & $i$ & $\ge$ 0 ms & Op time & \texttt{T\{i\}} & \badge{built}{built}\\
+$V_i,\allowbreak{}\ t^{\rm v}_i$ & $i$ & $\ge$ 0 & Vector lanes op $i$ uses; its vector time & \texttt{--} & \badge{newc}{v5}\\
+$c^{\rm KV},\allowbreak{}c^{\rm In},\allowbreak{}c^{\rm W},\allowbreak{}c^{\rm A},\allowbreak{}c^{\rm O}$ & $i,\allowbreak{}k,\allowbreak{}j$ & [0,1] & Share of the mode's traffic credited by the KV window, retained inputs, weights, addends, output & \texttt{v vI vW vA vO} & \badge{built}{built}\\
+$c^{\rm F}_{i,\allowbreak{}k,\allowbreak{}j}$ & $i,\allowbreak{}k,\allowbreak{}j$ & [0,1] & Host-servable bytes served from the fast tier & \texttt{vH vK} & \badge{built}{built}\\
+$c^{\rm P}_{i,\allowbreak{}k,\allowbreak{}j}$ & $i,\allowbreak{}k,\allowbreak{}j$ & [0,1] & Host-servable bytes prefetched into staging & \texttt{--} & \badge{newc}{v5}\\
+\bottomrule\end{xltabular}\endgroup
+ 
+\subsection*{3.4\quad Objective}
+  
+\eqgroup{Main solve}
+ 
+\begin{center}\adjustbox{max width=\textwidth}{$\displaystyle \min\quad \underbrace{\sum_{i\in\mathcal O} r_i\,T_i}_{\text{task latency}}\;+\;\varepsilon_A\,\mathfrak A\;+\;\varepsilon_F\Big(\sum_{\gamma,\rho}b_\rho\,\frac{S_\gamma}{10^9}\,g_{\gamma,\rho}+C_{\rm st}\Big)\;+\;\varepsilon_R\sum_{e\in\mathcal E}\sum_{\ell\le L_e}\sigma_e\,p^{\rm hd}_{e,\ell} \qquad(0) $}\end{center}
+ 
+\begin{center}\adjustbox{max width=\textwidth}{$\displaystyle \varepsilon_A A_{\rm cap}+\varepsilon_F\,\bar C_{\rm fast}+\varepsilon_R\sum_e\sigma_eL_e\ \le\ 10^{-4}\,L^{\rm Stage\,1},\qquad L_{\rm latency}=L_{(0)}-\Big(\varepsilon_A A_{\rm cap}+\varepsilon_F\,\bar C_{\rm fast}+\varepsilon_R\sum_e\sigma_eL_e\Big) $}\end{center}
+ 
+\eqgroup{Minimal chip at the certified latency (after recovery, winning branch, modes pinned)}
+ 
+\begin{center}\adjustbox{max width=\textwidth}{$\displaystyle \min\quad\mathfrak A\qquad\text{s.t. (1)–(47) with the recovered modes pinned},\qquad \sum_{i}r_i\,T_i\ \le\ (1+\delta)\,U,\qquad\delta=10^{-3}\qquad(0\text{B}) $}\end{center}
+ 
+
+Latency is the primary objective: LLM prefill plus every decode step at B = 32, SD's denoising steps under the DeepCache branch, and one CNN pass at batch 1. The $\varepsilon$ terms only break ties. The certificate stays a latency certificate, because the penalties' largest possible value is subtracted from the bound, and U is the exact latency of the recovered design. Then (0B) finds the smallest chip that keeps that latency to within 0.1\%, and that chip is the one reported.
+
+          
+\begingroup\scriptsize
+\setlength{\tabcolsep}{3pt}
+\renewcommand{\arraystretch}{1.18}
+\begin{xltabular}{\textwidth}{@{}>{\hsize=0.463\hsize\raggedright\arraybackslash}X >{\hsize=1.537\hsize\raggedright\arraybackslash}X@{}}
+\toprule
+\textbf{Earlier objective term} & \textbf{Where it went in v5}\\
+\midrule\endhead
+$\sum_{i,\allowbreak{}t}c^{\rm remat}_i\,\allowbreak{}r_{i,\allowbreak{}t}$ (V0--V2, the paper's master LP) & Inside latency. A recompute is an op copy with its own modes, tiles and time, (19) (25) (26). Its cost is already in $\sum_i r_iT_i$; keeping $c^{\rm remat}$ would count it twice. The paper's objective has to drop this term.\\
+$\varepsilon_{\rm CGM}\sum_k k\,\allowbreak{}h_{{\rm GM},\allowbreak{}k}$ (V2 builders, the paper) & Generalized to $\varepsilon_A\,\allowbreak{}\mathfrak A$: among equal-latency designs, prefer less total area (tiles, slices, persistent SRAM, PHY, DMA/NoC, features), not just a smaller global buffer. Plan 1 dropped this term, which is a gap in the current code.\\
+--- & New $\varepsilon_F$: off-die fast-tier occupancy and staging, which the area row cannot see. $\varepsilon_R$: holds no more than consumers need, so retention fractions come out canonical and recovery is deterministic.\\
+$\text{latency}+\lambda A$ (v4, optional, default $\lambda$ = 0) & Not used for the headline. It answers a different question (seconds traded per mm\textsuperscript{2}) and turns the certificate into a bound on the objective, not the latency. Performance per area comes from sweeping $A_{\rm cap}$ instead: the 600 mm\textsuperscript{2} and 132.2 mm\textsuperscript{2} runs are two points of that frontier.\\
+\bottomrule\end{xltabular}\endgroup
+ 
+\subsection*{3.5\quad Chip and gates, (1)--(12)}
+ 
+\smallskip
+
+\eqhead{\textbf{(1)}~\textbf{One PE type}\quad \famname{pe\_type\_onehot}\badge{built}{built}}
+ 
+\begin{center}\adjustbox{max width=\textwidth}{$\displaystyle \sum_{a\in\mathcal A}\alpha_a=1 $}\end{center}
+ 
+\smallskip
+
+\eqhead{\textbf{(2)}~\textbf{Tiles only of the chosen type}\quad \famname{tiles\_by\_type}\badge{built}{built}}
+ 
+\begin{center}\adjustbox{max width=\textwidth}{$\displaystyle n_{\rm lo}\,\alpha_a\ \le\ N_a\ \le\ \bar n\,\alpha_a\qquad\forall a\in\mathcal A $}\end{center}
+ 
+\smallskip
+
+\eqhead{\textbf{(3)}~\textbf{One memory technology}\quad \famname{memtech\_onehot}\badge{built}{built}}
+ 
+\begin{center}\adjustbox{max width=\textwidth}{$\displaystyle \sum_{t\in\mathcal T}m_t=1 $}\end{center}
+ 
+\smallskip
+
+\eqhead{\textbf{(4)}~\textbf{One bandwidth point}\quad \famname{bw\_onehot}\badge{built}{built}}
+ 
+\begin{center}\adjustbox{max width=\textwidth}{$\displaystyle \sum_{j\in\mathcal J}\nu_j=1 $}\end{center}
+ 
+\smallskip
+
+\eqhead{\textbf{(5)}~\textbf{Bandwidth $\times$ technology hull}\quad \famname{bw\_x\_memtech}\badge{built}{built}}
+ 
+\begin{center}\adjustbox{max width=\textwidth}{$\displaystyle \sum_{t}\theta_{j,t}=\nu_j\quad\forall j,\qquad \sum_{j}\theta_{j,t}=m_t\quad\forall t $}\end{center}
+ 
+\smallskip
+
+\eqhead{\textbf{(6)}~\textbf{Technology ceilings and pins, on installed bandwidth}\quad \famname{menu bounds}\badge{built}{built}\badge{newc}{v5: $\eta$}}
+ 
+\begin{center}\adjustbox{max width=\textwidth}{$\displaystyle \theta_{j,t}=0\qquad\text{whenever}\quad \frac{B_j}{\eta_t}>\min\{\bar B_t,\ B_{\rm pin}\} $}\end{center}
+ 
+
+$B_j$ is the delivered rate. Delivering it needs $B_j/\eta_t$ of installed interface, which is what pins, ceilings, area and capacity see.
+
+ 
+\smallskip
+
+\eqhead{\textbf{(7)}~\textbf{Global buffer is the sum of tile slices}\quad \famname{cgm\_is\_tile\_slices}\badge{built}{built}}
+ 
+\begin{center}\adjustbox{max width=\textwidth}{$\displaystyle C_{\rm gm}=\sum_{a}\frac{\omega_a}{1024}\,N_a $}\end{center}
+ 
+\smallskip
+
+\eqhead{\textbf{(8)}~\textbf{Area}\quad \famname{gate\_reticle\_area}\badge{built}{built}\badge{newc}{v5: $\eta$, DMA, NoC, converters}}
+ 
+\begin{center}\adjustbox{max width=\textwidth}{$\displaystyle \mathfrak A:=\sum_{a}\Big(A_{\rm tile}+a_S\frac{\omega_a}{1024}\Big)N_a+a_S\,C_{\rm p}+\sum_{j,t}\Big(\frac{k_t}{\eta_t}+k^{\rm DMA}+k^{\rm NoC}\Big)B_j\,\theta_{j,t}+\sum_{x\in\mathcal X}A_x\,\chi_x+\sum_{u\in\mathcal U}A_u\,\upsilon_u\ \ \le\ A_{\rm cap} $}\end{center}
+ 
+
+DMA engines and the on-chip network are sized to the delivered rate. Paying for interface bandwidth that the engines cannot use is never optimal, so this is the tractable form of $W_{\rm delivered}\le\min\{W_{\rm mem},\allowbreak{}W_{\rm DMA},\allowbreak{}W_{\rm NoC}\}$.
+
+ 
+\smallskip
+
+\eqhead{\textbf{(9)}~\textbf{SRAM macros}\quad \famname{gate\_sram\_macro}\badge{built}{built}}
+ 
+\begin{center}\adjustbox{max width=\textwidth}{$\displaystyle C_{\rm gm}+C_{\rm p}\ \le\ \bar S $}\end{center}
+ 
+\smallskip
+
+\eqhead{\textbf{(10)}~\textbf{Power density, per phase}\quad \famname{gate\_power\_density}\badge{built}{built}\badge{newc}{v5: per phase, interface power}}
+ 
+\begin{center}\adjustbox{max width=\textwidth}{$\displaystyle P_{\rm tile}(f_p)\sum_{a}N_a\;+\;8\cdot10^{-3}\sum_{j,t}\pi^{\rm bit}_t\,\frac{B_j}{\eta_t}\,\theta_{j,t}\ \le\ 2\,\mathfrak A\qquad\forall p\in\Phi $}\end{center}
+ 
+
+The MAC side is about 48 W for 940 tiles, against 1,200 W at 600 mm\textsuperscript{2}. This row is slack, so a clock below nominal is dominated and the DVFS branch collapses to $f_0$. Each solve checks the slack.
+
+ 
+\smallskip
+
+\eqhead{\textbf{(11)}~\textbf{One converter point}\quad \famname{--}\badge{newc}{v5}}
+ 
+\begin{center}\adjustbox{max width=\textwidth}{$\displaystyle \sum_{u\in\mathcal U}\upsilon_u=1 $}\end{center}
+ 
+\smallskip
+
+\eqhead{\textbf{(12)}~\textbf{Fast-tier capacity and package cap}\quad \famname{fast\_capacity (rhs)}\badge{built}{built}\badge{newc}{v5: frontier, cap}}
+ 
+\begin{center}\adjustbox{max width=\textwidth}{$\displaystyle C_{\rm fast}:=\sum_{j,t}\gamma_t\,\frac{B_j}{\eta_t}\,\theta_{j,t},\qquad C_{\rm fast}\ \le\ \sum_t\bar C_t\,m_t\qquad(\text{pinned chip: }C_{\rm fast}=C^{\rm fix},\ \text{TPU-v3: }32\text{ GB}) $}\end{center}
+ 
+
+Capacity per GB/s has no price in our gates, so the menu is the shipped frontier per technology.
+
+ 
+\subsection*{3.6\quad On-chip storage and residency, (13)--(17)}
+ 
+\smallskip
+
+\eqhead{\textbf{(13)}~\textbf{Everything live fits in the persistent buffer (Fix A)}\quad \famname{residency\_capacity}\badge{built}{built}}
+ 
+\begin{center}\adjustbox{max width=\textwidth}{$\displaystyle \sum_{e\in\mathcal E:\ s(e)\lt t\le{\rm last}(e)}\sigma_e\,p^{\rm hd}_{e,\ell(e,t)}\;+\sum_{(e,c)\in\mathcal R:\ c=t}\sigma_e\,\mu^{\rm rc}_{e,c}\ \le\ C_{\rm p}\qquad\forall t\in\mathcal O,\qquad \ell(e,t)=\min\{\ell:\ c_\ell(e)\ge t\} $}\end{center}
+ 
+
+Every tensor live at step $t$, including U-skips and residual adds, is charged at full size. A recomputed tensor lives only during its consumer.
+
+ 
+\smallskip
+
+\eqhead{\textbf{(14)}~\textbf{Held until the last consumer served}\quad \famname{release\_interval\_covers\_later\_consumers}\badge{built}{built}}
+ 
+\begin{center}\adjustbox{max width=\textwidth}{$\displaystyle p^{\rm rd}_{e,\ell'}\ \le\ p^{\rm hd}_{e,\ell}\qquad\forall e\in\mathcal E,\ 1\le\ell\le\ell'\le L_e $}\end{center}
+ 
+\smallskip
+
+\eqhead{\textbf{(15)}~\textbf{KV window, all layers at once, per format}\quad \famname{kv\_window\_capacity}\badge{built}{built}\badge{newc}{v5: by format}}
+ 
+\begin{center}\adjustbox{max width=\textwidth}{$\displaystyle \sum_{\rho\in\mathcal P^{\rm KV}}h_{b,\rho}\,\frac{K_{b,\rho}}{2^{20}}\ \le\ C_{\rm p}\qquad\forall b\in\mathcal B,\qquad h_{b,\rho}\le\sigma^{\rm KV}_\rho $}\end{center}
+ 
+
+(13) and (15) are separate rows. That is exact only because no retained tensor is live during decode, which the builder asserts. The format hull replaces the old global 4-bit KV variable, which cut read traffic but left the cache at 8-bit size in every capacity row.
+
+ 
+\smallskip
+
+\eqhead{\textbf{(16)}~\textbf{Retain or recompute, not both}\quad \famname{remat\_plus\_retained\_le\_1}\badge{built}{built}}
+ 
+\begin{center}\adjustbox{max width=\textwidth}{$\displaystyle p^{\rm rd}_{e,c}+\mu^{\rm rc}_{e,c}\ \le\ 1\qquad\forall(e,c)\in\mathcal R $}\end{center}
+ 
+\smallskip
+
+\eqhead{\textbf{(17)}~\textbf{A recompute rereads its inputs from DRAM}\quad \famname{remat\_inputs\_in\_dram}\badge{built}{built}}
+ 
+\begin{center}\adjustbox{max width=\textwidth}{$\displaystyle \sum_{k,j}c^{\rm O}_{s(e'),k,j}+\mu^{\rm rc}_{e,c}\ \le\ 1\qquad\forall(e,c)\in\mathcal R,\ \forall e'\in\mathcal N(e,c) $}\end{center}
+ 
+\subsection*{3.7\quad Mode selection and tiles, (18)--(24)}
+ 
+\smallskip
+
+\eqhead{\textbf{(18)}~\textbf{An op picks a mapping on the chosen PE type}\quad \famname{mode\_matches\_chip $\cdot$ mode\_matches\_chip\_opt}\badge{built}{built}}
+ 
+\begin{center}\adjustbox{max width=\textwidth}{$\displaystyle \sum_{k\in\mathcal K_a}z_{i,k}=\alpha_a\quad(i\in\mathcal O^{\rm pl}),\qquad \sum_{k\in\mathcal K_a}z_{i,k}\le\alpha_a\quad(i\in\mathcal O^{\rm opt})\qquad\forall a $}\end{center}
+ 
+\smallskip
+
+\eqhead{\textbf{(19)}~\textbf{Mass of a copy or a program-block op}\quad \famname{op\_mass}\badge{built}{built}\badge{newc}{v5: block selectors}}
+ 
+\begin{center}\adjustbox{max width=\textwidth}{$\displaystyle \sum_{k\in\mathcal K}z_{i,k}=\bar c_i\,\sigma_{s(i)}+\sum_{v\in\mathcal V}a_{i,v}\,\mu_v,\qquad \mu_v\le\sigma_{s(v)}\qquad\forall i\in\mathcal O^{\rm opt}\quad(\sigma\equiv1\ \text{outside program blocks}) $}\end{center}
+ 
+
+For a plain op with copies: $\sigma_s-\sum_v\mu_v$. For a copy: $\mu_v$. For a recompute copy: $\mu^{\rm rc}_{e,\allowbreak{}c}$. Ops inside a program block are optional in (18) and (24).
+
+ 
+\smallskip
+
+\eqhead{\textbf{(20)}~\textbf{Workspace fits the tile slice}\quad \famname{variable bound}\badge{built}{built}}
+ 
+\begin{center}\adjustbox{max width=\textwidth}{$\displaystyle z_{i,k}=0\qquad\text{whenever}\quad W_{i,k}>1024\,\omega_{a(k)} $}\end{center}
+ 
+\smallskip
+
+\eqhead{\textbf{(21)}~\textbf{An op uses at most the installed tiles}\quad \famname{tile\_copies\_le\_installed $\cdot$ group\_tile\_copies\_le\_installed}\badge{built}{built}}
+ 
+\begin{center}\adjustbox{max width=\textwidth}{$\displaystyle \sum_{k\in\mathcal K_a}N_{i,k}\le N_a\quad\forall a,\ i\notin\textstyle\bigcup\mathfrak G^{\ge2};\qquad \sum_{i\in G}\sum_{k\in\mathcal K_a}N_{i,k}\le N_a\quad\forall a,\ G\in\mathfrak G^{\ge2} $}\end{center}
+ 
+
+The copies of one op run one after another on their share of the work. The group row is the exact hull of "direct or alternative".
+
+ 
+\smallskip
+
+\eqhead{\textbf{(22)}~\textbf{Perspective domain}\quad \famname{copy\_domain\_tiles}\badge{built}{built}}
+ 
+\begin{center}\adjustbox{max width=\textwidth}{$\displaystyle 0\ \le\ N_{i,k}\ \le\ \bar n_i\,z_{i,k} $}\end{center}
+ 
+\smallskip
+
+\eqhead{\textbf{(23)}~\textbf{Mode $\times$ bandwidth hull}\quad \famname{mode\_x\_bw}\badge{built}{built}}
+ 
+\begin{center}\adjustbox{max width=\textwidth}{$\displaystyle \sum_{j\in\mathcal J}y_{i,k,j}=z_{i,k} $}\end{center}
+ 
+\smallskip
+
+\eqhead{\textbf{(24)}~\textbf{All ops see the chip's bandwidth}\quad \famname{bw\_matches\_chip $\cdot$ bw\_matches\_chip\_opt}\badge{built}{built}}
+ 
+\begin{center}\adjustbox{max width=\textwidth}{$\displaystyle \sum_{k}y_{i,k,j}=\nu_j\quad(i\in\mathcal O^{\rm pl}),\qquad \sum_k y_{i,k,j}\le\nu_j\quad(i\in\mathcal O^{\rm opt})\qquad\forall j $}\end{center}
+ 
+\subsection*{3.8\quad Op time, (25)--(32)}
+ 
+\smallskip
+
+\eqhead{\textbf{(25)}~\textbf{Compute: perspective of $D/N$}\quad \famname{persp\_compute}\badge{built}{built}\badge{newc}{v5: /f}}
+ 
+\begin{center}\adjustbox{max width=\textwidth}{$\displaystyle t^{\rm c}_{i,k}\ \ge\ \frac{D_{i,k}}{f_{\phi(i)}}\Big(\frac{2}{\zeta}\,z_{i,k}-\frac{1}{\zeta^{2}}\,N_{i,k}\Big)\qquad\forall\zeta\in\mathcal Z $}\end{center}
+ 
+
+These are tangents of $D\,\allowbreak{}z^2/N$: exact at integral $z$ up to the anchor tolerance $\epsilon=1\%$.
+
+ 
+\smallskip
+
+\eqhead{\textbf{(26)}~\textbf{A recompute share runs on all useful tiles at most}\quad \famname{remat\_time\_ge\_share}\badge{built}{built}}
+ 
+\begin{center}\adjustbox{max width=\textwidth}{$\displaystyle t^{\rm c}_{i,k}\ \ge\ \frac{D_{i,k}}{\bar n_i\,f_{\phi(i)}}\,z_{i,k}\qquad\forall i\in\mathcal O^{\rm rc} $}\end{center}
+ 
+\smallskip
+
+\eqhead{\textbf{(27)}~\textbf{Memory: bytes minus credits at the delivered rate, plus the host tier}\quad \famname{mem\_time}\badge{built}{built}\badge{newc}{v5: prefetch terms}}
+ 
+\begin{center}\adjustbox{max width=\textwidth}{$\displaystyle \begin{gathered} t^{\rm m}_{i,k}\ \ge\ \frac{1}{\mathrm{TS}}\sum_{j}\frac{1}{B_j}\Big[Q_{i,k}\,y_{i,k,j}-Q^{\rm In}_{i,k}\big(c^{\rm KV}_{i,k,j}+c^{\rm In}_{i,k,j}\big)-Q^{\rm W}_{i,k}\,c^{\rm W}_{i,k,j}-A^{\rm ret}_i\,c^{\rm A}_{i,k,j}-Q^{\rm O}_{i,k}\,c^{\rm O}_{i,k,j}+Q^{\rm hs}_{i,k}\,c^{\rm P}_{i,k,j}\Big]\\ +\ \frac{1}{\mathrm{TS}}\sum_{j}Q^{\rm hs}_{i,k}\Big(\frac{1}{W_{\rm host}}-\frac{1}{B_j}\Big)\big(y_{i,k,j}-c^{\rm F}_{i,k,j}-c^{\rm P}_{i,k,j}\big) \end{gathered} $}\end{center}
+ 
+
+Host-served bytes that are neither in the fast tier nor prefetched stall the op at the host rate. Prefetched bytes cost one extra fast-tier write (the $+Q^{\rm hs}c^{\rm P}$ term), and their host transfer moves to the phase row (44).
+
+ 
+\smallskip
+
+\eqhead{\textbf{(28)}~\textbf{Latency-bound delivery (Little's law)}\quad \famname{--}\badge{newc}{v5}}
+ 
+\begin{center}\adjustbox{max width=\textwidth}{$\displaystyle t^{\rm m}_{i,k}\ \ge\ \frac{Q^{\rm nc}_{i,k}\,L_{t^\ast}}{\beta_{i,k}\,\mathrm{TS}}\Big(\frac{2}{\zeta}\,z_{i,k}-\frac{1}{\zeta^{2}}\,N_{i,k}\Big)\qquad\forall\zeta\in\mathcal Z_8\qquad(\text{root: }L_{t^\ast}\to\min_tL_t) $}\end{center}
+ 
+
+A tile with $\beta$ bytes of buffer can keep at most $\beta$ in flight, so $N$ tiles deliver at most $N\beta/L$. This row replaces the paper's register-file/occupancy row with the template's own quantity: buffer depth times slice. Deeper buffering ($d=3$) earns its GLB cost here. Coarser anchors are still a valid lower bound.
+
+ 
+\smallskip
+
+\eqhead{\textbf{(29)}~\textbf{Conversion time}\quad \famname{--}\badge{newc}{v5}}
+ 
+\begin{center}\adjustbox{max width=\textwidth}{$\displaystyle t^{\rm cv}_{i,k}\ \ge\ \sum_{u\in\mathcal U}\frac{X_{i,k}}{U_u\,f_{\phi(i)}\,\mathrm{TS}}\,x^{\rm cv}_{i,k,u},\qquad \sum_{u}x^{\rm cv}_{i,k,u}=z_{i,k},\qquad x^{\rm cv}_{i,k,u}\le\upsilon_u,\qquad x^{\rm cv}_{i,k,0}=0\ \text{ if }X_{i,k}>0 $}\end{center}
+ 
+
+Without this row, low-bit bytes are saved for free, which is the dequantization trap reported by QServe. For the native-W4 copy, $X=0$ and it needs $\chi_{\rm w4mac}$.
+
+ 
+\smallskip
+
+\eqhead{\textbf{(30)}~\textbf{Load path is the slower of transfer and conversion}\quad \famname{--}\badge{newc}{v5}}
+ 
+\begin{center}\adjustbox{max width=\textwidth}{$\displaystyle t^{\rm ld}_{i,k}\ \ge\ t^{\rm m}_{i,k},\qquad t^{\rm ld}_{i,k}\ \ge\ t^{\rm cv}_{i,k} $}\end{center}
+ 
+\smallskip
+
+\eqhead{\textbf{(31)}~\textbf{Overlap by buffering, with fill and drain}\quad \famname{overlap\_by\_buffering}\badge{built}{built}\badge{newc}{v5: $\vartheta$, t\textasciicircum{}ld}}
+ 
+\begin{center}\adjustbox{max width=\textwidth}{$\displaystyle d(k)=1:\ \ \tau_{i,k}\ge t^{\rm c}_{i,k}+t^{\rm ld}_{i,k};\qquad d(k)\ge2:\ \ \tau_{i,k}\ge t^{\rm c}_{i,k}+\vartheta_{i,k}\,t^{\rm ld}_{i,k},\quad \tau_{i,k}\ge t^{\rm ld}_{i,k}+\vartheta_{i,k}\,t^{\rm c}_{i,k} $}\end{center}
+ 
+
+A double-buffered pipeline of $n^{\rm st}$ steps takes $\max+\min/n^{\rm st}$: the first load and the last compute cannot overlap. Today $\vartheta=0$, which is optimistic for ops with few steps.
+
+ 
+\smallskip
+
+\eqhead{\textbf{(32)}~\textbf{Op time}\quad \famname{op\_time}\badge{built}{built}}
+ 
+\begin{center}\adjustbox{max width=\textwidth}{$\displaystyle T_i\ \ge\ \sum_{k\in\mathcal K}\tau_{i,k} $}\end{center}
+ 
+\subsection*{3.9\quad Traffic credits, (33)--(38)}
+ 
+\smallskip
+
+\eqhead{\textbf{(33)}~\textbf{A credit belongs to the mode that earns it}\quad \famname{residency\_credit\_le\_mode $\cdot$ kv\_credit\_le\_mode}\badge{built}{built}}
+ 
+\begin{center}\adjustbox{max width=\textwidth}{$\displaystyle c^{\bullet}_{i,k,j}\ \le\ y_{i,k,j}\qquad\bullet\in\{{\rm KV},{\rm In},{\rm W},{\rm A},{\rm O}\}\ \text{present for op }i $}\end{center}
+ 
+\smallskip
+
+\eqhead{\textbf{(34)}~\textbf{Fast-served plus prefetched is at most the mode's share}\quad \famname{fast\_credit\_le\_mode $\cdot$ fast\_kv\_credit\_le\_mode}\badge{built}{built}\badge{newc}{v5: + c\textasciicircum{}P}}
+ 
+\begin{center}\adjustbox{max width=\textwidth}{$\displaystyle c^{\rm F}_{i,k,j}+c^{\rm P}_{i,k,j}\ \le\ y_{i,k,j} $}\end{center}
+ 
+\smallskip
+
+\eqhead{\textbf{(35)}~\textbf{Input, weight and addend credits are bounded by what is retained or recomputed}\quad \famname{residency\_credit\_le\_retained\_in $\cdot$ \_w $\cdot$ \_add}\badge{built}{built}}
+ 
+\begin{center}\adjustbox{max width=\textwidth}{$\displaystyle \sum_{k,j}c^{\kappa}_{i,k,j}\ \le\ \sum_{e\in\mathcal E^{\kappa}_i\cap\mathcal E}\frac{b_{e,i}}{B^{\kappa}_i}\,p^{\rm rd}_{e,i}\;+\sum_{e\in\mathcal E^{\kappa}_i:\ (e,i)\in\mathcal R}\frac{b_{e,i}}{B^{\kappa}_i}\,\mu^{\rm rc}_{e,i}\qquad \kappa\in\{{\rm In},{\rm W},{\rm A}\} $}\end{center}
+ 
+
+Here $B^{\rm In}_i=\sum_{e\in\mathcal E^{\rm In}_i}b_{e,\allowbreak{}i}$, $B^{\rm W}_i=\sum_{e\in\mathcal E^{\rm W}_i}b_{e,\allowbreak{}i}$, $B^{\rm A}_i=A^{\rm ret}_i$. Retention credits the op's measured traffic of that dataspace, split by bytes.
+
+ 
+\smallskip
+
+\eqhead{\textbf{(36)}~\textbf{The output write is skipped only for rows every consumer gets on chip}\quad \famname{residency\_credit\_le\_retained\_out}\badge{built}{built}}
+ 
+\begin{center}\adjustbox{max width=\textwidth}{$\displaystyle \sum_{k,j}c^{\rm O}_{i,k,j}\ \le\ p^{\rm rd}_{{\rm out}(i),c}+\mathbb 1\big[({\rm out}(i),c)\in\mathcal R\big]\,\mu^{\rm rc}_{{\rm out}(i),c}\qquad\forall c\in\mathcal C({\rm out}(i)) $}\end{center}
+ 
+\smallskip
+
+\eqhead{\textbf{(37)}~\textbf{KV credit is bounded by the window of its format}\quad \famname{kv\_credit\_le\_window}\badge{built}{built}\badge{newc}{v5: by format}}
+ 
+\begin{center}\adjustbox{max width=\textwidth}{$\displaystyle \sum_{k,j}c^{\rm KV}_{i,k,j}\ \le\ h_{b,\rho(i)}\qquad\forall i\in\mathcal O^{\rm KV}_b\ \ (\rho(i)=\text{the format of this KV copy}) $}\end{center}
+ 
+
+Builder assertion: a KV op has no retained Inputs edge, so $c^{\rm KV}$ and $c^{\rm In}$ never credit the same bytes in (27).
+
+ 
+\smallskip
+
+\eqhead{\textbf{(38)}~\textbf{Copies of one op share their credits}\quad \famname{residency\_credit\_group\_in $\cdot$ \_w $\cdot$ \_add $\cdot$ \_out $\cdot$ kv\_credit\_group\_le\_window}\badge{built}{built}}
+ 
+\begin{center}\adjustbox{max width=\textwidth}{$\displaystyle \sum_{i\in G}\sum_{k,j}c^{\bullet}_{i,k,j}\ \le\ \mathrm{RHS}_{(35)\text{–}(37)}\big(i_0(G)\big)\qquad\forall G\in\mathfrak G^{\ge2},\ \bullet\in\{{\rm In},{\rm W},{\rm A},{\rm O},{\rm KV}\} $}\end{center}
+ 
+
+For grouped ops, (38) replaces (35)--(37).
+
+ 
+\subsection*{3.10\quad Memory tiers, formats and prefetch, (39)--(44)}
+ 
+\smallskip
+
+\eqhead{\textbf{(39)}~\textbf{Fast-served weights are bounded by their class share in that format}\quad \famname{fast\_credit\_le\_class}\badge{built}{built}\badge{newc}{v5: by format}}
+ 
+\begin{center}\adjustbox{max width=\textwidth}{$\displaystyle \sum_{k,j}c^{\rm F}_{i,k,j}\ \le\ g_{{\rm cls}(i),\rho(i)}\qquad\forall i\in\mathcal O^{\Gamma} $}\end{center}
+ 
+\smallskip
+
+\eqhead{\textbf{(40)}~\textbf{Fast-served KV is bounded by the window plus the fast-tier share, per format}\quad \famname{fast\_kv\_credit\_le\_held}\badge{built}{built}\badge{newc}{v5: by format}}
+ 
+\begin{center}\adjustbox{max width=\textwidth}{$\displaystyle \sum_{k,j}c^{\rm F}_{i,k,j}\ \le\ h^{\rm F}_{b,\rho(i)}+h_{b,\rho(i)}\qquad\forall i\in\mathcal O^{\rm KV}_b,\qquad h^{\rm F}_{b,\rho}\le\sigma^{\rm KV}_\rho $}\end{center}
+ 
+\smallskip
+
+\eqhead{\textbf{(41)}~\textbf{One format per weight identity}\quad \famname{--}\badge{newc}{v5}}
+ 
+\begin{center}\adjustbox{max width=\textwidth}{$\displaystyle \sum_{\rho\in\mathcal F}q_{\gamma,\rho}=1\quad\forall\gamma,\qquad \mu_{\rho:i}=q_{{\rm cls}(i),\rho}\quad\forall i\in\mathcal O^\Gamma,\ \rho\ne\text{w8},\qquad g_{\gamma,\rho}\le q_{\gamma,\rho} $}\end{center}
+ 
+
+The prefill and decode groups of one projection read the same stored weights, so they share one format. This is the v4 format $\times$ pin hull, which is exact at integral $q$. Today each op group picks its own W4 mass.
+
+ 
+\smallskip
+
+\eqhead{\textbf{(42)}~\textbf{Fast-tier capacity, per phase}\quad \famname{fast\_capacity}\badge{built}{built}\badge{newc}{v5: formats, staging}}
+ 
+\begin{center}\adjustbox{max width=\textwidth}{$\displaystyle \sum_{\gamma,\rho}b_\rho\,\frac{S_\gamma}{10^{9}}\,g_{\gamma,\rho}\;+\;\sum_{\rho\in\mathcal P^{\rm KV}}h^{\rm F}_{b,\rho}\,\frac{K_{b,\rho}}{10^{9}}\;+\;C_{\rm st}\ \le\ C_{\rm fast}\qquad\forall b\in\{0\}\cup\mathcal B\quad(K_{0,\rho}=0:\ \text{prefill}) $}\end{center}
+ 
+\smallskip
+
+\eqhead{\textbf{(43)}~\textbf{Staging holds one instance of any prefetched op}\quad \famname{--}\badge{newc}{v5}}
+ 
+\begin{center}\adjustbox{max width=\textwidth}{$\displaystyle C_{\rm st}\ \ge\ \sum_{k,j}\frac{Q^{\rm hs}_{i,k}}{n_i\,10^{9}}\,c^{\rm P}_{i,k,j}\qquad\forall i\in\mathcal O^\Gamma\cup\bigcup_b\mathcal O^{\rm KV}_b $}\end{center}
+ 
+\smallskip
+
+\eqhead{\textbf{(44)}~\textbf{One host link carries direct and prefetched traffic}\quad \famname{--}\badge{newc}{v5}}
+ 
+\begin{center}\adjustbox{max width=\textwidth}{$\displaystyle \sum_{i\in\mathcal O_p}r_i\sum_{k,j}\frac{Q^{\rm hs}_{i,k}}{W_{\rm host}\,\mathrm{TS}}\,\big(y_{i,k,j}-c^{\rm F}_{i,k,j}\big)\ \le\ \sum_{i\in\mathcal O_p}r_i\,T_i\qquad\forall p\in\Phi $}\end{center}
+ 
+
+Everything not served from the fast tier crosses the host link: $y-c^{\rm F}$ is the direct share plus the prefetched share $c^{\rm P}$. So direct traffic cannot free the link for prefetching. This row, (27) and (43) are a relaxation. They do not enforce that a prefetch finishes before its consumer, or bound the staging footprint over a real timeline. Those are enforced by the schedule-level evaluator that computes U (\S{}3.14), so the LP bound and the achievable time are never the same aggregate model.
+
+ 
+\subsection*{3.11\quad Features and quality, (45)--(47)}
+ 
+\smallskip
+
+\eqhead{\textbf{(45)}~\textbf{A copy needs its chip feature}\quad \famname{copy\_needs\_chip\_feature}\badge{built}{built}}
+ 
+\begin{center}\adjustbox{max width=\textwidth}{$\displaystyle \mu_v\ \le\ \chi_{{\rm req}(v)}\qquad\forall v\ \text{whose copies need a feature (wino, sp24, w4mac)} $}\end{center}
+ 
+\smallskip
+
+\eqhead{\textbf{(46)}~\textbf{Quality budget for combinations}\quad \famname{--}\badge{newc}{v5}}
+ 
+\begin{center}\adjustbox{max width=\textwidth}{$\displaystyle \psi_f\ \ge\ \mu_v\ \ \forall v\in\mathcal V_f,\qquad \psi_{\rm w4}\ \ge\ q_{\gamma,\rm w4}\ \ \forall\gamma,\qquad \sum_{f}\Delta q_f\,\psi_f\ \le\ \epsilon\quad\text{unless the active combination is measured jointly} $}\end{center}
+ 
+\smallskip
+
+\eqhead{\textbf{(47)}~\textbf{Admission}\quad \famname{copy creation}\badge{built}{built}}
+ 
+\begin{center}\adjustbox{max width=\textwidth}{$\displaystyle \mu_v=0,\qquad q_{\gamma,\rho}=0\qquad\text{for every family or format the accuracy menu does not admit for the model} $}\end{center}
+ 
+\subsection*{3.12\quad Pinned families, (48)--(52)}
+ 
+
+Written in full so the paper can state exactly what is off. Each is pinned at its identity value, so it leaves the program unchanged.
+
+ 
+\smallskip
+
+\eqhead{\textbf{(48)}~\textbf{KV eviction budget (StreamingLLM, H2O)}\quad \badge{pinc}{pinned: not admitted}}
+ 
+\begin{center}\adjustbox{max width=\textwidth}{$\displaystyle B^{\rm KV}_b\in[B_{\min},L_b]:\quad K_b\leftarrow K_b\frac{B^{\rm KV}_b}{L_b},\quad Q^{\rm In}_{i,k}\leftarrow Q^{\rm In}_{i,k}\frac{B^{\rm KV}_b}{L_b}\ \ (i\in\mathcal O^{\rm KV}_b);\qquad \text{pinned: }B^{\rm KV}_b=L_b $}\end{center}
+ 
+\smallskip
+
+\eqhead{\textbf{(49)}~\textbf{Query-aware page selection (Quest)}\quad \badge{pinc}{pinned: no evidence for our models}}
+ 
+\begin{center}\adjustbox{max width=\textwidth}{$\displaystyle \kappa^{\rm pg}_b\in\big[\kappa_{\min},\lceil L_b/P_{\rm pg}\rceil\big]:\quad Q^{\rm In}_{i,k}\leftarrow Q^{\rm In}_{i,k}\frac{\kappa^{\rm pg}_bP_{\rm pg}}{L_b}+M^{\rm pg}_b,\quad D_{i,k}\leftarrow D_{i,k}+D^{\rm sel}_b;\qquad\text{pinned: }\kappa^{\rm pg}_b=\lceil L_b/P_{\rm pg}\rceil,\ M^{\rm pg}_b=D^{\rm sel}_b=0 $}\end{center}
+ 
+\smallskip
+
+\eqhead{\textbf{(50)}~\textbf{Contextual sparsity (Deja Vu)}\quad \badge{pinc}{pinned: evidence is for OPT}}
+ 
+\begin{center}\adjustbox{max width=\textwidth}{$\displaystyle \zeta_i\in[\zeta_{\min},1]:\quad Q^{\rm W}_{i,k}\leftarrow\zeta_iQ^{\rm W}_{i,k},\quad D_{i,k}\leftarrow\zeta_iD_{i,k},\quad +\ \text{a predictor op};\qquad\text{pinned: }\zeta_i=1 $}\end{center}
+ 
+\smallskip
+
+\eqhead{\textbf{(51)}~\textbf{Speculative decoding}\quad \badge{pinc}{pinned off by decision}}
+ 
+\begin{center}\adjustbox{max width=\textwidth}{$\displaystyle T_{\rm tok}=\frac{\mathbb E\big[T_{\rm draft}(K)+T_{\rm verify}(K)+T_{\rm ctl}\big]}{\mathbb E[A_K]},\qquad T_{\rm verify}(K):\ \text{decode ops at }B(K+1)\text{ tokens},\qquad \#\text{experts}=E\Big[1-\Big(1-\frac kE\Big)^{B(K+1)}\Big];\qquad\text{pinned: }K=0 $}\end{center}
+ 
+
+For DeepSeek, verification widens the expert union: 163 experts at 32 positions, 252 at 128. Speculation is therefore not the ordinary step divided by the acceptance rate.
+
+ 
+\smallskip
+
+\eqhead{\textbf{(52)}~\textbf{Near-memory (PIM) engine}\quad \badge{pinc}{pinned: no validated cost model}}
+ 
+\begin{center}\adjustbox{max width=\textwidth}{$\displaystyle \xi_{i,\rm NPU}+\xi_{i,\rm PIM}=1,\qquad \tau_{i,k}\ge\frac{D^{\rm PIM}_i}{F_{\rm PIM}}\,\xi_{i,\rm PIM},\qquad \tau_{i,k}\ge\frac{Q^{\rm bank}_i}{W_{\rm bank}}\,\xi_{i,\rm PIM},\qquad \text{package area}\mathrel{+}=A_{\rm PIM}\,\chi_{\rm PIM};\qquad\text{pinned: }\xi_{i,\rm PIM}=0 $}\end{center}
+ 
+\subsection*{3.12b\quad Root selectors, vector unit, total power, (53)--(56)}
+ 
+\smallskip
+
+\eqhead{\textbf{(53)}~\textbf{Program blocks and KV format are root selectors}\quad \famname{--}\badge{newc}{v5}}
+ 
+\begin{center}\adjustbox{max width=\textwidth}{$\displaystyle \sum_{s\in\mathcal S}\sigma_s=1,\qquad \sum_{\rho\in\mathcal P^{\rm KV}}\sigma^{\rm KV}_\rho=1,\qquad p^{\rm hd}_{e,\ell},\ p^{\rm rd}_{e,\ell}\ \le\ \sigma_{s(e)},\qquad \mu^{\rm KV}_{\rho:i}=\sigma^{\rm KV}_\rho\quad\forall i\in\textstyle\bigcup_b\mathcal O^{\rm KV}_b,\ \rho\in\mathcal P^{\rm KV} $}\end{center}
+ 
+
+Each KV op carries one copy per admitted format, with mass $\sigma^{\rm KV}_\rho$, and each block op carries mass $\sigma_s$. The rows are exact at integral selectors. Gate test: fixing $\sigma$ in the root reproduces the separately built branch, both its feasible set and its optimum, on small cases.
+
+ 
+\smallskip
+
+\eqhead{\textbf{(54)}~\textbf{Vector unit}\quad \famname{--}\badge{newc}{v5}}
+ 
+\begin{center}\adjustbox{max width=\textwidth}{$\displaystyle t^{\rm v}_i\ \ge\ \frac{E^{\rm v}_i}{f_{\phi(i)}\,\mathrm{TS}}\Big(\frac{2}{\zeta}\,M_i-\frac{1}{\zeta^{2}}\,V_i\Big)\ \ \forall\zeta,\qquad V_i\le V,\qquad V_i\le\bar V\,M_i,\qquad T_i\ \ge\ t^{\rm v}_i,\qquad M_i:=\sum_kz_{i,k} $}\end{center}
+ 
+
+$V$ enters the area row (8) as $a_VV$ and the power rows as $p_VV$. Vector work is attached to its producing MAC op as an epilogue that pipelines with it, so it adds no DRAM traffic. That is an assumption, checked in replay; an unfused vector op would need its own traffic. Today no vector work is costed at all. The attention fusion is renamed \emph{score-resident attention fusion}: it keeps the whole per-instance score matrix on chip, which is not FlashAttention's tiled online softmax.
+
+ 
+\smallskip
+
+\eqhead{\textbf{(55)}~\textbf{Total power at peak activity}\quad \famname{--}\badge{newc}{v5}}
+ 
+\begin{center}\adjustbox{max width=\textwidth}{$\displaystyle P^{\rm pk}_{\rm tile}\sum_aN_a+p_S\,(C_{\rm gm}+C_{\rm p})+p_V\,V+\sum_{j,t}\Big(8\cdot10^{-3}\,\pi^{\rm bit}_t\,\frac{B_j}{\eta_t}+p^{\rm DMA}B_j\Big)\theta_{j,t}+\sum_xP_x\,\chi_x+\sum_uP_u\,\upsilon_u\ \le\ P_{\rm TDP} $}\end{center}
+ 
+
+Peak component activity, the convention FAST uses for Perf/TDP. The density row (10) stays as well; neither one alone is a total-power model.
+
+ 
+\smallskip
+
+\eqhead{\textbf{(56)}~\textbf{Crossbar and logic depth are implied}\quad \famname{feasibility\_checks}\badge{built}{proof}}
+ 
+\begin{center}\adjustbox{max width=\textwidth}{$\displaystyle \text{logic depth}=19\le35\ \ (\text{template constant}),\qquad \Big(\sum_aN_a\Big)\cdot\frac{C_{\rm gm}+C_{\rm p}}{64\ \rm KB}\ \le\ \bar n\cdot4096\ \le\ 1040\cdot4096\ \lt\ 5\cdot10^{6}\quad\text{by (2) and (9)} $}\end{center}
+ 
+\subsection*{3.13\quad Program transforms: what creates the ops and their parameters}
+ 
+
+These run before the LP is built. Each one produces ops or copies that rows (18)--(47) then govern. None of them adds a new kind of row.
+
+                   
+\begingroup\scriptsize
+\setlength{\tabcolsep}{3pt}
+\renewcommand{\arraystretch}{1.18}
+\begin{xltabular}{\textwidth}{@{}l >{\hsize=0.726\hsize\raggedright\arraybackslash}X >{\hsize=1.274\hsize\raggedright\arraybackslash}X l@{}}
+\toprule
+\textbf{Transform} & \textbf{Creates} & \textbf{Parameters it sets} & \textbf{Status}\\
+\midrule\endhead
+LLM op groups & Prefill groups; decode groups per KV bin; KV ops tagged with their bin & $n_i=n^{\rm ser}_in^{\rm par}_i$ (layers $\times$ parallel instances), $r_i$ = steps in the bin. \emph{Score-resident attention fusion}: a per-instance score tensor QK$\to$AV, retainable (not FlashAttention's tiled algorithm) & \badge{built}{built} \badge{newc}{rename, split n}\\
+Per-op programs & EfficientNet (true depthwise, SE on the pooled vector); SD (attention per instance, strides, U-skips) & Typed edges $\mathcal E^{\rm In},\allowbreak{}\mathcal E^{\rm W},\allowbreak{}\mathcal E^{\rm A}$, $\sigma_e$, $b_{e,\allowbreak{}i}$ & \badge{built}{built}\\
+MoE expert union & Routed-expert ops with token counts $c\sim\mathrm{Binomial}(B,\allowbreak{}k/E)$ & Expected distinct experts $E[1-(1-k/E)^B]=163.3$ weight streams per step & \badge{built}{built}\\
+Winograd F(2$\times$2,3$\times$3) & Copy of each stride-1 dense 3$\times$3 conv, mass $\mu$, plain mass $1-\mu$ & spec $(C,\allowbreak{}M,\allowbreak{}1,\allowbreak{}1,\allowbreak{}\lceil P/2\rceil,\allowbreak{}\lceil Q/2\rceil,\allowbreak{}N)$, $n'=16n$, $\varsigma^{\rm In}=\varsigma^{\rm O}=0.25$, needs wino; \badge{newc}{v5}: input and output transforms as vector work $E^{\rm v}$ (54). Algebraically equal, not bit-identical in finite precision & \badge{badc}{recovery defect}\\
+2:4 sparsity & Copy of each weight op (not depthwise) & $\varsigma^{\rm cyc}=0.5$, $\varsigma^{\rm W}=0.625$, needs sp24 & \badge{badc}{LP/evaluator mismatch}\\
+W4 (dequantized) & Copy of each weight op & $\varsigma^{\rm W}=b_{\rm w4}$ (menu), $X$ = weight elements per read; mass tied by (41) & \badge{built}{built} \badge{newc}{+ X, tie}\\
+W4 native (w4n) & Copy of each weight op & $\varsigma^{\rm W}=b_{\rm w4}$, $X=0$, needs w4mac & \badge{newc}{v5}\\
+KV format & Root selector (53): one copy of each KV op per admitted format & $\varsigma^{\rm In}=s^{\rm KV}_\rho/s^{\rm KV}_8$ on the copy; $K_{b,\allowbreak{}\rho}$ in (15) (42); $X$ = cache elements per read plus appends; residual window $R_{\rm res}$ at 8 bits & \badge{newc}{global var $\to$ root selector}\\
+Split-KV (Flash-Decoding) & Copy of each decode attention op, split $s\in\{2,\allowbreak{}4,\allowbreak{}8\}$ & spec with KV length $L_b/s$, $n'=s\,\allowbreak{}n$, $\bar n'=s\,\allowbreak{}\bar n$, $E=2sBHd_hb$ merge bytes & \badge{datac}{new records}\\
+Recompute & Copy of $s(e)$ before each non-adjacent consumer $c$, mass $\mu^{\rm rc}_{e,\allowbreak{}c}$; pruned if its compute lower bound exceeds the spill upper bound & No output write; rereads $\mathcal N(e,\allowbreak{}c)$ from DRAM; addend rereads in $E$ & \badge{built}{built}\\
+Hydragen & In prefix contracts: prefix attention as $[gH]\times L_s$ ops, plus suffix ops & Prefix KV read once per group of $g$, merge bytes $2gHd_hb$ & \badge{datac}{new records}\\
+Prefix reuse & In prefix contracts: shared prefill once per group & $L_s=L/4$ & \badge{built}{built}\\
+Chunked prefill & Separate steady-state serving workload, not a fixed-batch branch & Decode steps carry $B+c_{\rm tok}$ tokens, $c_{\rm tok}=B(L-L_s)/(G-1)$, one weight stream. Metric: time per batch turnover. Needs an explicit arrival and backlog contract before it is reported & \badge{newc}{own workload}\\
+DeepCache & Root selector (53): blocks $N_{\rm dc}\in\{1,\allowbreak{}2\}$ & $r_i\leftarrow r_i/N_{\rm dc}$ for deep ops. Deep$\to$shallow edges are read from DRAM: producers write every $N_{\rm dc}$ steps and consumers read every step, both inside their Timeloop records. Off-chip space for the cached features (MBs) is not modeled & \badge{built}{built} \badge{newc}{$\to$ selector}\\
+\bottomrule\end{xltabular}\endgroup
+ 
+\subsection*{3.14\quad Root, branches and certificate}
+ 
+\begin{center}\adjustbox{max width=\textwidth}{$\displaystyle \beta=(a^\ast,\ t^\ast,\ \sigma,\ \sigma^{\rm KV}),\qquad L=\min_{\beta\in\mathcal B}\ L_\beta,\qquad U=\min\Big\{\mathrm{sched}\big(\mathrm{recover}(\mathrm{LP}_\beta)\big)_\beta,\ \mathrm{sched}(d):\ d\ \text{an earlier design still feasible in v5}\Big\},\qquad \mathrm{gap}=\frac{U-L}{U} $}\end{center}
+ 
+\begin{itemize}
+ \item \textbf{Root and branches.} The root is (0)--(56) with every selector free. A branch fixes root selectors: PE type, technology, program block, KV format. Branches cover the root's discrete domain, so $\min_\beta L_\beta$ is a valid bound, tighter than the root relaxation. Clock stays at $f_0$ by the dominance proof in (10).
+ \item \textbf{Branch bounds.} An unsolved branch keeps a valid bound: the box-aware safe dual bound computed in original units from whatever dual vector the solver holds. That bound is valid for any dual vector once every column has finite bounds (the machinery already built for CORGI). A branch without one leaves L uncertified for that workload, and it is reported that way; it is never dropped from the minimum.
+ \item \textbf{Recovery.} Enumerate the discrete choices jointly: program block, KV format, weight format per weight identity (41), features. Then take each op's argmax mode within that consistent choice, re-solve the continuous rest, and floor the tiles. The slice capacity follows from (7).
+ \item \textbf{U comes from a schedule, not the LP's accounting.} The evaluator \texttt{sched} runs the recovered design on a timeline. The host link is a single FIFO server; each prefetch is released one op ahead and must finish before its consumer starts; staging occupancy is tracked over time; transfer, conversion and compute overlap only as the validated pipeline allows. Exact-lift, which lifts the design into every variable and checks every row, is a formulation-consistency check only. Timeloop replay of the top ops is the physics check.
+ \item \textbf{Minimal chip.} (0B) finds the smallest chip for the winning branch and its recovered modes. It is not the smallest chip at that latency over all mappings.
+ \item \textbf{Incumbents.} U $\le$ the v5 time of every earlier design that is still v5-feasible, compared on latency alone, without the $\varepsilon$ terms. That is not a claim that v5 beats every historically reported stage time.
+ \item \textbf{Reported for every result.} U, L, gap and gates. Traffic split per phase (weights, KV, host, other). Delivered vs installed bandwidth. Separate comparisons against the tiled proxy, baseline A and (once built) the faithful TPU-v3 model, each under a stated numerical contract.
+ 
+\end{itemize}
+ 
+\subsection*{3.15\quad Size}
+ 
+
+Per op, per branch there are $|\mathcal K_{a^\ast}|=15$ modes and $|\mathcal J|\le8$ bandwidth points.
+
+ 
+\begin{itemize}
+ \item \textbf{Columns:} about $15\,\allowbreak{}(7+8\,\allowbreak{}(1+n_{\rm cred})+|\mathcal U|)$, where $n_{\rm cred}\le7$ credit kinds.
+ \item \textbf{Rows:} about $15\,\allowbreak{}(36+8+8\,\allowbreak{}n_{\rm cred}+6)$, dominated by the tangent rows (25) and (28).
+ \item \textbf{Program blocks:} SD's DeepCache blocks double its op count in the root.
+ \item \textbf{Measured reference:} the Stage 2 SD Winograd root, over 30 modes, was 878,108 rows $\times$ 380,004 columns and took 61 minutes.
+ 
+\end{itemize}
+ 
+
+\textbf{Mode dominance presolve, corrected.} Mode $k'$ removes $k$ only if all of the following hold:
+
+ 
+\begin{itemize}
+ \item both have the same PE type, \emph{the same buffering depth}, the same feature, format and transform requirements, and the same credit-eligible dataspaces;
+ \item $D'\le D$, $Q'^{\bullet}\le Q^{\bullet}$ for every dataspace, $W'\le W$, $\vartheta'\le\vartheta$, $\beta'\ge\beta$, $X'\le X$.
+ 
+\end{itemize}
+ 
+
+Comparing $D,\allowbreak{}Q,\allowbreak{}W$ alone would delete a double-buffered mode that runs nearly twice as fast, because it has the same $D,\allowbreak{}Q$ and a larger $W$. A regression test guards against this.
+
+   
+\section*{06\quad Correctness gate before any full campaign}
+ 
+
+Every test runs on small cases where brute force or a hand schedule gives the answer. A full cumulative campaign starts only when all of them pass.
+
+                
+\begingroup\scriptsize
+\setlength{\tabcolsep}{3pt}
+\renewcommand{\arraystretch}{1.18}
+\begin{xltabular}{\textwidth}{@{}c >{\hsize=0.479\hsize\raggedright\arraybackslash}X >{\hsize=2.040\hsize\raggedright\arraybackslash}X >{\hsize=0.481\hsize\raggedright\arraybackslash}X@{}}
+\toprule
+\textbf{\#} & \textbf{Test} & \textbf{Must pass} & \textbf{Today}\\
+\midrule\endhead
+G1 & Buffering dominance & A faster double-buffered mode survives the presolve despite its larger workspace & \badge{newc}{rule corrected; test to write}\\
+G2 & Shared host link & Direct plus prefetched host traffic never exceeds one link's capacity, (44) & \badge{newc}{row corrected}\\
+G3 & Prefetch deadline and staging & The schedule evaluator rejects a consumer that starts before its prefetch arrives; simultaneous staging fits & \badge{newc}{evaluator to build}\\
+G4 & Credit accuracy & Retaining a tensor removes its actual accesses: multi-tensor dataspaces are channel concatenations; KV and Inputs credits never overlap & \badge{built}{holds (22 SD concats)} \badge{newc}{assertion to add}\\
+G5 & Serial multiplicity & Grouping identical serial layers does not raise the useful-tile cap & \badge{badc}{bug confirmed}, no effect on current designs\\
+G6 & Request causality & No fixed-batch workload contains a chunked branch; the steady-state workload declares arrivals, backlog and its metric & \badge{newc}{contract change}\\
+G7 & Root/branch equivalence & Fixing root selectors reproduces the separately built branch: feasible choices and optimum & \badge{newc}{test to write}\\
+G8 & Baseline identity and containment & v5 pinned to the tiled proxy reproduces software-on-proxy; each comparison names its baseline and numerical contract & \badge{badc}{128 KiB slice missing}\\
+G9 & Exact-lift & The lifted design satisfies every row and its objective equals U (formulation consistency only) & \badge{built}{passes on 13B} \badge{badc}{fails on 2:4}\\
+G10 & Recovery & Never empty; weight-identity and program-block choices stay consistent & \badge{badc}{empty on SD Winograd}\\
+G11 & Quality evidence classes & Each admitted entry is labeled verified-on-exact-model, literature transfer or unverified. EfficientNet 2:4 (extrapolated from B0) and the additive combination budget are transfer assumptions & \badge{newc}{labels to add}\\
+\bottomrule\end{xltabular}\endgroup
+   
+\section*{08\quad Outer loop: a dual-guided implementation designer}
+ 
+
+The LP answers "what is the best design among the implementations we can substantiate". The LLM answers "given what is expensive in that optimum, which implementation should we develop next". The LLM never sets MAC count, bandwidth, batch or budgets: those are LP decisions or contract constants.
+
+         
+\begingroup\scriptsize
+\setlength{\tabcolsep}{3pt}
+\renewcommand{\arraystretch}{1.18}
+\begin{xltabular}{\textwidth}{@{}>{\hsize=0.494\hsize\raggedright\arraybackslash}X >{\hsize=1.506\hsize\raggedright\arraybackslash}X@{}}
+\toprule
+\textbf{Component} & \textbf{Responsibility}\\
+\midrule\endhead
+LP v5 (root program) & Optimize every represented hardware and software choice and produce a checked bound\\
+Deterministic dual-aware recovery & Turn fractional decisions into a feasible chip and schedule, pricing rounding and repair moves with the duals (the CvxCluster pattern). This is the baseline the LLM must beat\\
+LLM implementation designer & Propose missing kernels, mapping families, hardware primitives or bundles, and targeted measurements\\
+Mapper, compiler, numerics, physical evaluators, \texttt{sched} & Establish legality, coefficients, quality and execution behavior before anything enters the library\\
+\bottomrule\end{xltabular}\endgroup
+ 
+\subsection*{What the LLM reads: \texttt{dual\_report}, computed in code}
+ 
+\begin{itemize}
+ \item \textbf{Contract and status:} model, task, numerical contract, limits and disabled families; primal and dual residuals in original units, L, U, gap.
+ \item \textbf{Constraint semantics:} row family, op, phase, tensor identity and live interval for every priced row. Duals from the latency solve (0) are never mixed with those from the area solve (0B).
+ \item \textbf{Priced opportunities:} the local value of a \emph{specified} change, $\widehat{\Delta V}=\nabla_\theta\mathcal L(z^\star,\allowbreak{}\lambda^\star;\allowbreak{}\theta)^{\top}\Delta\theta$, rather than a raw multiplier ranking. For storage, the time-indexed price of a tensor, $\sigma_e\sum_{t\in\mathcal I_e}\lambda^{(13)}_t$, shows which part of its lifetime competes for SRAM.
+ \item \textbf{Robustness:} scores are compared across alternative dual solutions and small controlled re-solves, because degenerate optima have non-unique prices.
+ \item \textbf{Library gaps and validation:} missing mappings and unsupported combinations; rejected proposals and why; $|\partial V/\partial\theta|\,\allowbreak{}\Delta\theta_{\rm unc}$ for influential coefficients that are assumed rather than measured.
+ 
+\end{itemize}
+ 
+\subsection*{What the LLM proposes, and how it enters}
+ 
+\begin{itemize}
+ \item \textbf{The proposal:} a concrete implementation or bundle (for example fused unpack, dequantize and compute with a stated layout and converter; a producer--consumer tiling that shortens an expensive skip's live interval; a new vector path or bank organization with its interface). It lists target ops, the price signals it answers, resource accounting, required hardware and the tests to run.
+ \item \textbf{The block:} after verification it enters the versioned library as a block of variables and rows. The full root is re-solved with all hardware free, and the recovered design is run through \texttt{sched}.
+ \item \textbf{Screening vs reward:} reduced cost $\bar c_j=c_j-a_j^{\top}\pi$ is only a screen. The reward is verified feasible latency, and a measurement that raises predicted latency still counts as a successful validation.
+ 
+\end{itemize}
+ 
+\subsection*{Certificate scope}
+ 
+
+Bounds hold for the frozen library. The LLM finding nothing is not a stopping certificate. A larger universe is covered only by a verified pricing procedure: with a proved per-group pricing error $\epsilon_i$, $L_{\rm full}\ge D_{\rm restricted}-\sum_i\epsilon_i$ (the Hijazi et al. arrangement: learned proposals for speed, exact verification for the guarantee).
+
+ 
+\subsection*{Showing the LLM matters (equal development and evaluation budget)}
+          
+\begingroup\scriptsize
+\setlength{\tabcolsep}{3pt}
+\renewcommand{\arraystretch}{1.18}
+\begin{xltabular}{\textwidth}{@{}>{\hsize=0.809\hsize\raggedright\arraybackslash}X >{\hsize=1.191\hsize\raggedright\arraybackslash}X@{}}
+\toprule
+\textbf{Variant} & \textbf{Question}\\
+\midrule\endhead
+Random or systematic generation & Is intelligent proposal selection useful?\\
+Deterministic dual-guided rules & Do resource prices alone explain the gains?\\
+LLM with primal statistics, no duals & Does the LLM need more than profiling?\\
+LLM with labeled duals & Does the combination improve discovery?\\
+LLM with shuffled duals & Do the gains depend causally on the dual information?\\
+\bottomrule\end{xltabular}\endgroup
+ 
+
+The primary curve is best verified feasible latency against total search and validation time, counting mapper, compiler, physical evaluation, LP and LLM costs. The strongest single result would be a proposal that is poor with either hardware or software held fixed but pays off when both are re-optimized.
+
+ 
+
+\textbf{Order of work:} v5 root, certificate and recovery $\to$ \texttt{dual\_report} and deterministic dual-aware recovery $\to$ the LLM designer $\to$ the ablations.
+
+   
+\section*{09\quad Outside v5, and why}
+ 
+\begin{itemize}
+ \item \textbf{Multi-device tensor or expert parallelism, prefill/decode disaggregation (DistServe), CPU offload of cold work (PowerInfer):} more than one device, so the one-chip rule excludes them.
+ \item \textbf{Wafer-scale (WaferLLM):} outside the single-reticle area domain.
+ \item \textbf{Batch as a decision:} it changes the measurement contract. It belongs in a separate serving study with arrivals and SLOs.
+ \item \textbf{Architecture changes (GQA uptraining, MLA conversion):} model changes, not deployment choices. Each checkpoint is used as released.
+ \item \textbf{PIM (52) and speculation (51):} written out, pinned, and stated as such in the paper.
+ 
+\end{itemize}
+    
+\end{document}
