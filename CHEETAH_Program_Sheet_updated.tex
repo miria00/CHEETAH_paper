@@ -1,0 +1,1074 @@
+% ======================================================
+%  CHEETAH Program Sheet
+
+%  SECTION TO SOURCE MAP
+%    The program, layer by layer  systems/cheetah_joint/joint_lp.py row
+% ======================================================
+
+\documentclass[10pt]{article}
+
+\newif\ifPLEX \PLEXfalse   % true + lualatex if IBM Plex is installed
+
+\usepackage{iftex}
+\ifPLEX
+  \usepackage{fontspec}
+  \setmainfont{IBM Plex Serif}
+  \setsansfont{IBM Plex Sans}
+  \setmonofont{IBM Plex Mono}[Scale=MatchLowercase]
+\else
+  \usepackage[T1]{fontenc}
+  \usepackage{lmodern}                  % keeps Latin Modern Mono as \ttfamily
+  \usepackage[scale=0.96]{tgheros}     % sans, body text
+  \usepackage{tgschola}                 % serif, headings
+\fi
+\renewcommand{\familydefault}{\sfdefault}
+
+\usepackage[a4paper,left=16mm,right=16mm,top=15mm,bottom=17mm]{geometry}
+\usepackage[dvipsnames,table]{xcolor}
+\usepackage{amsmath}
+\usepackage{array}
+\usepackage{booktabs}
+\usepackage{adjustbox}
+\usepackage{enumitem}
+\usepackage{titlesec}
+\usepackage{parskip}
+\usepackage{microtype}
+\usepackage{tikz}
+\usepackage{tcolorbox}
+\tcbuselibrary{skins,breakable,raster}
+\usepackage{needspace}
+\usepackage{xurl}
+\usepackage[hidelinks]{hyperref}
+\usepackage{bookmark}
+
+% ---------------------------------------------------------------- dates
+\newcommand{\sheetdata}{2026-10-01}
+\newcommand{\sheetrev}{2026-10-02}
+
+% --------------------------------------------------------------- palette
+% Light theme of the artifact. The artifact also carries a dark theme;
+% a PDF has one background, so only the light values are kept here.
+\definecolor{paper}{HTML}{F5F7F9}
+\definecolor{surface}{HTML}{FFFFFF}
+\definecolor{surf2}{HTML}{EEF2F6}
+\definecolor{ink}{HTML}{121B26}
+\definecolor{ink2}{HTML}{465566}
+\definecolor{ink3}{HTML}{6D7D8E}
+\definecolor{rulec}{HTML}{CED6E0}
+\definecolor{rulesoft}{HTML}{E2E8EE}
+\definecolor{accent}{HTML}{1D5C8F}
+\definecolor{accentsoft}{HTML}{E9F0F7}
+\definecolor{sone}{HTML}{2A78D6}
+\definecolor{stwo}{HTML}{EB6834}
+\definecolor{okc}{HTML}{1F6F4A}
+\definecolor{oksoft}{HTML}{E4F1EA}
+\definecolor{warnc}{HTML}{8A6213}
+\definecolor{warnsoft}{HTML}{F7EFDC}
+\definecolor{stopc}{HTML}{9E3127}
+\definecolor{stopsoft}{HTML}{F7E6E3}
+
+\pagecolor{paper}
+\color{ink}
+\hypersetup{colorlinks=true,urlcolor=accent,linkcolor=accent,
+            pdftitle={CHEETAH Program Sheet},
+            pdfsubject={Hardware and software co-design, program reference}}
+
+% ------------------------------------------------------------- utilities
+\newcommand{\mono}{\ttfamily}
+\newcommand{\tx}{\,\ensuremath{\times}}
+\newcommand{\mmsq}[1]{#1\,mm\textsuperscript{2}}
+\newcommand{\eyebrow}[1]{{\mono\fontsize{7.6}{9}\selectfont\color{ink3}\MakeUppercase{#1}}}
+\newcommand{\lede}[1]{{\color{ink2}#1\par}\vspace{2pt}}
+
+% inline identifier box, underscores may be raw
+\newtcbox{\idbox}{on line,arc=1pt,outer arc=1pt,boxrule=0.3pt,boxsep=0pt,
+  left=1.7pt,right=1.7pt,top=0.7pt,bottom=0.7pt,
+  colback=surf2,colframe=rulesoft}
+\newcommand{\idt}[1]{\idbox{\mono\fontsize{7.8}{9}\selectfont\detokenize{#1}}}
+
+% row family tag
+\newtcbox{\fambox}{on line,arc=1pt,outer arc=1pt,boxrule=0.3pt,boxsep=0pt,
+  left=1.5pt,right=1.5pt,top=0.6pt,bottom=0.6pt,
+  colback=surf2,colframe=rulesoft}
+\newcommand{\rowfam}[1]{\fambox{\mono\fontsize{6.8}{8}\selectfont\color{ink2}\detokenize{#1}}\hspace{1pt}}
+
+% provenance chips
+\newtcbox{\chipbox}[1]{on line,arc=1.2pt,outer arc=1.2pt,boxrule=0.3pt,boxsep=0pt,
+  left=2.4pt,right=2.4pt,top=1pt,bottom=1pt,#1}
+% \texorpdfstring keeps the chip out of the PDF bookmark strings, since a
+% chip may appear inside a \section title.
+\newcommand{\chipgen}[3]{\texorpdfstring{%
+  \chipbox{colback=#2,colframe=#1,coltext=#1}%
+  {\mono\fontsize{6.4}{7}\selectfont\MakeUppercase{#3}}}{}}
+\newcommand{\chipM}{\chipgen{okc}{oksoft}{measured}}
+\newcommand{\chipR}{\chipgen{accent}{accentsoft}{report}}
+\newcommand{\chipN}{\chipgen{warnc}{warnsoft}{notes}}
+\newcommand{\chipL}{\chipgen{stopc}{stopsoft}{lost}}
+
+% verdict badges
+\newcommand{\vbadge}[3]{\chipbox{colback=#2,colframe=#2,coltext=#1}%
+  {\mono\fontsize{6.6}{7}\selectfont\MakeUppercase{#3}}\hspace{3pt}}
+\newcommand{\vyes}[1]{\vbadge{okc}{oksoft}{#1}}
+\newcommand{\vno}[1]{\vbadge{stopc}{stopsoft}{#1}}
+\newcommand{\vpart}[1]{\vbadge{warnc}{warnsoft}{#1}}
+
+% ------------------------------------------------------------- headings
+\setcounter{secnumdepth}{0}
+\titleformat{\section}{\rmfamily\bfseries\fontsize{15.5}{18}\selectfont\color{ink}}{}{0pt}{}
+\titlespacing*{\section}{0pt}{16pt}{3pt}
+\titleformat{\subsection}{\sffamily\bfseries\fontsize{10.5}{13}\selectfont\color{ink}}{}{0pt}{}
+\titlespacing*{\subsection}{0pt}{11pt}{2pt}
+
+% ---------------------------------------------------------------- boxes
+\tcbset{cardstyle/.style={enhanced,breakable,colback=surface,colframe=rulec,
+  boxrule=0.4pt,arc=2pt,left=8pt,right=8pt,top=6pt,bottom=6pt}}
+\newtcolorbox{card}{cardstyle}
+\newtcolorbox{vizbox}[1][]{enhanced,breakable,colback=surface,colframe=rulec,
+  boxrule=0.4pt,arc=2pt,left=9pt,right=9pt,top=8pt,bottom=8pt,#1}
+\newtcolorbox{callbox}[2][accent]{enhanced,breakable,colback=#2,colframe=#2,
+  boxrule=0pt,arc=0pt,borderline west={2.2pt}{0pt}{#1},
+  left=9pt,right=9pt,top=7pt,bottom=7pt}
+\newenvironment{callA}{\begin{callbox}[accent]{accentsoft}}{\end{callbox}}
+\newenvironment{callW}{\begin{callbox}[warnc]{warnsoft}}{\end{callbox}}
+\newenvironment{callS}{\begin{callbox}[stopc]{stopsoft}}{\end{callbox}}
+\newcommand{\ct}[1]{{\mono\fontsize{7.2}{8}\selectfont\color{ink2}\MakeUppercase{#1}}\par\vspace{2pt}}
+
+% a layer card: count, heading, prose, family tags
+\newcommand{\layer}[4]{%
+\begin{card}
+  \begin{minipage}[t]{13mm}
+    \raggedright{\mono\fontsize{17}{18}\selectfont\color{accent}#1}\\[-1pt]
+    {\mono\fontsize{6}{7}\selectfont\color{ink3}FAMILIES}
+  \end{minipage}\hfill
+  \begin{minipage}[t]{\dimexpr\linewidth-16mm\relax}
+    {\sffamily\bfseries\fontsize{10.5}{12.5}\selectfont #2}\par\vspace{2.5pt}
+    {\color{ink2}\fontsize{9}{11.6}\selectfont #3\par}\vspace{4pt}
+    \raggedright #4
+  \end{minipage}
+\end{card}\vspace{3pt}}
+
+% a question and answer card
+\newcommand{\qa}[2]{%
+\begin{card}
+  {\sffamily\bfseries\fontsize{10.3}{12.5}\selectfont #1}\par\vspace{3pt}
+  {\color{ink2}\fontsize{9}{11.6}\selectfont #2\par}
+\end{card}\vspace{3pt}}
+
+% a flow step: tag, name, text
+\newcommand{\stepbox}[3]{%
+  \eyebrow{#1}\par\vspace{1pt}
+  {\sffamily\bfseries\fontsize{9.6}{11}\selectfont #2}\par\vspace{1.5pt}
+  {\color{ink2}\fontsize{8.4}{10.4}\selectfont #3\par}}
+
+% ---------------------------------------------------------------- lists
+\newenvironment{tight}
+  {\begin{itemize}[leftmargin=13pt,itemsep=4pt,topsep=4pt,parsep=0pt,
+     label=\textcolor{ink3}{\footnotesize$\bullet$}]\color{ink2}}
+  {\end{itemize}}
+
+% a legend row: chip in a fixed left column, meaning beside it
+\newcommand{\legrow}[2]{%
+  \noindent\begin{minipage}[t]{21mm}\raggedright #1\end{minipage}\hspace{2mm}%
+  \begin{minipage}[t]{\dimexpr\linewidth-23mm\relax}
+    {\fontsize{9}{11.4}\selectfont\color{ink2}#2\par}
+  \end{minipage}\par\vspace{4pt}}
+
+% --------------------------------------------------------------- tables
+\newcolumntype{N}{>{\mono}r}
+\newcolumntype{L}{>{\mono}l}
+\newcommand{\thd}[1]{{\mono\fontsize{6.8}{8}\selectfont\color{ink3}\MakeUppercase{#1}}}
+\newenvironment{sheettable}[1]
+  {\par\vspace{5pt}{\mono\fontsize{7.4}{9}\selectfont\color{ink3}\raggedright #1\par}\vspace{2.5pt}%
+   \begingroup\arrayrulecolor{rulec}\scriptsize
+   \setlength{\tabcolsep}{3pt}\renewcommand{\arraystretch}{1.22}}
+  {\endgroup\par}
+\newcommand{\tnote}[1]{\par\vspace{4pt}{\fontsize{8.4}{10.6}\selectfont\color{ink3}#1\par}}
+
+% -------------------------------------------------------- bars and meters
+% Speedup bars. Track is 104 mm wide and spans 0 to 100x, so a value v
+% in x units is v*1.04 mm. Change both numbers together to rescale.
+\newcommand{\barline}[3]{%
+  \begin{tikzpicture}[x=1mm,y=1mm,baseline=0.2mm]
+    \fill[surf2] (0,0) rectangle (104,2.9);
+    \fill[#2] (0,0) rectangle (#1*1.04,2.9);
+  \end{tikzpicture}\hspace{2mm}{\mono\fontsize{7}{8}\selectfont\color{ink2}#3}}
+\newcommand{\speedrow}[5]{%
+  \noindent\begin{minipage}[t]{23mm}\raggedright
+    {\mono\fontsize{7.4}{9}\selectfont\color{ink2}#1}\end{minipage}%
+  \begin{minipage}[t]{\dimexpr\linewidth-23mm\relax}
+    \barline{#2}{stwo}{#3}\\[1.3pt]
+    \barline{#4}{sone}{#5}
+  \end{minipage}\par\vspace{3.5pt}}
+\newcommand{\baraxis}{%
+  \noindent\hspace{23mm}\begin{tikzpicture}[x=1mm,y=1mm]
+    \draw[rulesoft,line width=0.4pt] (0,2) -- (104,2);
+    \foreach \p/\l in {0/0x,26/25x,52/50x,78/75x,104/100x}
+      {\node[anchor=north,inner sep=1pt,text=ink3] at (\p,1.6)
+        {\mono\fontsize{6.6}{7}\selectfont \l};}
+  \end{tikzpicture}\par\vspace{2pt}}
+
+% Prefill against decode meters. Track is 164 mm, so a share s in
+% percent is s*1.64 mm.
+\newcommand{\meterrow}[5]{%
+  \noindent{\mono\fontsize{7.6}{9}\selectfont #1}\hfill
+  {\mono\fontsize{7}{8}\selectfont\color{ink3}#2}\par\vspace{1.5pt}
+  \noindent\begin{tikzpicture}[x=1mm,y=1mm]
+    \fill[surf2] (0,0) rectangle (164,5.4);
+    \fill[sone] (0,0) rectangle (#3*1.64,5.4);
+    \fill[stwo] (#3*1.64+0.5,0) rectangle (164,5.4);
+    \node[anchor=west,inner sep=0pt,text=white] at (2,2.7)
+      {\mono\fontsize{6.8}{8}\selectfont #4};
+    \node[anchor=east,inner sep=0pt,text=white] at (162,2.7)
+      {\mono\fontsize{6.8}{8}\selectfont #5};
+  \end{tikzpicture}\par\vspace{5pt}}
+\newcommand{\swatch}[1]{\tikz[baseline=-0.4ex]\fill[#1] (0,0) rectangle (2.4mm,2.4mm);}
+\newcommand{\vlegend}[1]{{\fontsize{8.6}{10}\selectfont\color{ink2}#1\par}\vspace{5pt}}
+\newcommand{\viztitle}[2]{%
+  {\sffamily\bfseries\fontsize{10.3}{12}\selectfont #1}\par
+  {\fontsize{8.4}{10}\selectfont\color{ink3}#2\par}\vspace{7pt}}
+
+\begin{document}
+\sloppy
+
+% ===================================================== MASTHEAD
+\begingroup
+\eyebrow{Hardware and software co-design \textperiodcentered{} program reference}\par\vspace{5pt}
+{\rmfamily\bfseries\fontsize{27}{30}\selectfont CHEETAH Program Sheet\par}\vspace{6pt}
+{\fontsize{10.6}{14}\selectfont\color{ink2}
+One joint linear program picks the accelerator and its whole schedule at
+once: MAC count, bandwidth, memory technology, on-chip capacity,
+per-operation mapping, residency, rematerialization and the KV window are
+decided together, and every design ships with a certificate that brackets
+its own latency.\par}\vspace{7pt}
+{\mono\fontsize{7.8}{10}\selectfont\color{ink3}
+\textbf{Twelve workloads} designed end to end \quad
+\textbf{68} row families \quad
+\textbf{28k to 664k} variables \quad
+\textbf{0.35M to 5.4M} nonzeros \quad
+\textbf{HiGHS/CORGIsolver}\par}
+\vspace{5pt}
+{\color{ink}\hrule height 1.4pt}
+\endgroup
+\vspace{10pt}
+
+% ===================================================== LEGEND
+\begin{card}
+{\mono\fontsize{7.4}{9}\selectfont\color{ink3}PROVENANCE OF EVERY NUMBER ON THIS SHEET\par}\vspace{4pt}
+\legrow{\chipM}{Built and counted on \sheetdata{}, on the RTX 5090 host \idt{kevin}, from the deployed Stage-1 code that produced the reports. The build-only probe reproduced each report's rows and columns and each certificate to every printed digit.}
+\legrow{\chipR}{Read out of the twelve \idt{*_e2e.json} run reports of 2026-09-21, which survive on \idt{kevin} and \idt{mazeppa}.}
+\legrow{\chipN}{Recorded in \idt{DESIGN_deepseek.md} or the project log, not re-derived here.}
+\legrow{\chipL}{Produced on the two A100 pods and the H100 pod, which no longer answer. The outputs were never mirrored to a surviving host.}
+\end{card}
+
+% ===================================================== THE PROGRAM
+\section{The program, layer by layer \chipM}
+\lede{Every row of the master program carries a family name, so the layers
+below are the real tags from the source, not a retelling. Counted from
+\idt{joint_lp.py}: 69 family declarations, 68 distinct names, \idt{op_mass}
+opened twice.}
+
+\layer{11}{Chip identity and selectors}{%
+One chip for the whole workload. Exactly one PE type, one memory technology
+and one bandwidth point are chosen, and every operation's mapping must be
+compatible with that same chip. The on-chip global memory is tied to the
+installed tile slices by an equality, and the bandwidth and memory technology
+are coupled so an illegal pair cannot be assembled.}{%
+\rowfam{pe_type_onehot}\rowfam{memtech_onehot}\rowfam{bw_onehot}\rowfam{bw_x_memtech}\rowfam{cgm_is_tile_slices}\rowfam{mode_matches_chip}\rowfam{mode_matches_chip_opt}\rowfam{bw_matches_chip}\rowfam{bw_matches_chip_opt}\rowfam{vector_lanes_le_chip}\rowfam{vector_lanes_domain}}
+
+\layer{6}{Physical gates}{%
+The six pre-RTL manufacturability limits sit inside the program as rows, not
+as a filter applied afterwards, so an illegal chip is infeasible rather than
+discarded later. Reticle area is an equality against the area model, which is
+deliberate: a free area epigraph would let the power-density limit relax
+itself.}{%
+\rowfam{gate_reticle_area}\rowfam{gate_sram_macro}\rowfam{gate_crossbar}\rowfam{gate_crossbar_tiles}\rowfam{gate_power_density}\rowfam{gate_total_power}}
+
+\layer{10}{Mapping selection and mass conservation}{%
+Each operation picks one implementation mode out of the cached library: a PE
+aspect, a global-buffer slice size, a buffer-keep policy and a double-buffering
+depth. The mass rows conserve work across alternative implementations of the
+same operation, and the copy rows stop the chip from running more tile copies
+than it installs.}{%
+\rowfam{op_mass}\rowfam{block_onehot}\rowfam{converter_onehot}\rowfam{mass_le_block}\rowfam{retain_le_block}\rowfam{tile_copies_le_installed}\rowfam{group_tile_copies_le_installed}\rowfam{copy_domain_tiles}\rowfam{copy_needs_chip_feature}\rowfam{mode_x_bw}}
+
+\layer{6}{On-chip capacity}{%
+What is resident at a moment has to fit. Retained tensors are charged at full
+size, the KV window and the staging buffers are charged separately, and a
+tensor's release interval has to cover every later consumer, so a long skip
+cannot be kept for free.}{%
+\rowfam{residency_capacity}\rowfam{kv_window_capacity}\rowfam{capacity_workspace}\rowfam{staging_capacity}\rowfam{fast_capacity}\rowfam{release_interval_covers_later_consumers}}
+
+\layer{13}{Residency credits, the McCormick layer}{%
+This is where traffic saved by keeping a tensor on chip gets credited, and it
+is the only place a software decision multiplies another software decision.
+The credit is bounded by the chosen mode, by what was actually retained, and
+by the KV window, in both the per-operation and the grouped form. The products
+are relaxed by McCormick envelopes, which is also where the relaxation gap
+comes from.}{%
+\rowfam{residency_credit_le_mode}\rowfam{residency_credit_le_retained_add}\rowfam{residency_credit_le_retained_out}\rowfam{residency_credit_group_add}\rowfam{residency_credit_group_out}\rowfam{kv_credit_le_mode}\rowfam{kv_credit_le_window}\rowfam{kv_credit_group_le_window}\rowfam{fast_credit_le_mode}\rowfam{fast_credit_le_class}\rowfam{fast_kv_credit_le_mode}\rowfam{fast_kv_credit_le_held}\rowfam{fast_kv_credit_le_held_group}}
+
+\layer{4}{KV format and tiering}{%
+The KV cache's numeric format is a decision with its own one-hot, and the
+on-chip window can never exceed what the chosen format allows. The fast-tier
+rows couple the same window to a faster memory class when one is installed.}{%
+\rowfam{kv_format_onehot}\rowfam{kv_window_le_format}\rowfam{fast_share_le_format}\rowfam{fast_kv_le_format}}
+
+\layer{3}{Rematerialization}{%
+An activation can be recomputed instead of stored. A tensor cannot be both
+retained and recomputed, a recomputed input must be read from DRAM, and the
+recompute time is charged against the operation that pays for it.}{%
+\rowfam{remat_plus_retained_le_1}\rowfam{remat_inputs_in_dram}\rowfam{remat_time_ge_share}}
+
+\layer{12}{Time, the epigraph layer}{%
+No row says what an operation's time is. Each row says the time variable is at
+least something: at least the compute term, at least the memory term, at least
+the conversion and vector work, at least what the host link and the service
+limit allow. Minimizing the sum then pushes each time variable down onto the
+binding term, which is how the maximum of compute and memory stays linear.}{%
+\rowfam{op_time}\rowfam{op_time_vector}\rowfam{mem_time}\rowfam{conv_time}\rowfam{conv_hull}\rowfam{conv_le_point}\rowfam{load_path}\rowfam{host_link_phase}\rowfam{little_latency_credited}\rowfam{overlap_by_buffering}\rowfam{persp_vector}\rowfam{service_limit}}
+
+\layer{3}{Quality and admission}{%
+A family that changes numerics can only be used inside a stated accuracy
+budget, drawn from an accuracy-vetted menu in the contract. Stage 1 pins
+precision at the baseline, so these rows are present and inert.}{%
+\rowfam{quality_family_use}\rowfam{quality_budget}\rowfam{quality_joint_exempt}}
+
+\begin{callA}
+\ct{What makes the hardware continuous}
+Installed MACs and bandwidth are not picked off a grid of allowed chips. The
+reciprocal cost $D/x$ of a mode with fixed demand $D$ running at rate $x$ is
+handled by perspective tangent planes, so the rate stays a continuous variable
+inside a pure linear program.
+\vspace{4pt}
+\[
+\begin{array}{@{}r@{\;}c@{\;}l@{\qquad}l@{}}
+  \tau &\ge& \dfrac{D z^{2}}{x_k}
+    & \text{\footnotesize the convex hull of the disjunction}\\[9pt]
+  \tau &\ge& D\!\left(\dfrac{2z}{g}-\dfrac{x_k}{g^{2}}\right)
+    & \text{\footnotesize the tangent plane at anchor } g\\[9pt]
+  \mathrm{slack} &=& \dfrac{D\,(x_k-gz)^{2}}{g^{2}x_k}\;\ge\;0
+    & \text{\footnotesize so no plane ever cuts off a feasible point}
+\end{array}
+\]
+\vspace{2pt}
+Anchor spacing comes from an error target rather than taste: a geometric grid
+with ratio $(1+\sqrt{\varepsilon})/(1-\sqrt{\varepsilon})$ meets the target
+everywhere, which over a 256\tx{} range is 29 anchors at
+$\varepsilon=10^{-2}$ and 89 at $\varepsilon=10^{-3}$.
+\end{callA}
+
+% ===================================================== SIZES
+\section{Program sizes and nonzeros \chipM}
+\lede{Built fresh on \sheetdata{}, one program per workload, with no solve.
+Columns and rows match each run report; nonzeros and the variable-group count
+were never recorded before, so these are new numbers.}
+
+\begin{sheettable}{Stage-1 root program per workload. Build seconds are this probe; solve seconds are from the 2026-09-21 reports.}
+\begin{adjustbox}{max width=\linewidth}
+\begin{tabular}{L N N N N N N N N N N N}
+\toprule
+\thd{Workload} & \thd{Ops} & \thd{Variables} & \thd{Var groups} & \thd{Rows}
+ & \thd{Equality} & \thd{Inequality} & \thd{Nonzeros} & \thd{nnz/row}
+ & \thd{Density} & \thd{Build s} & \thd{Solve s}\\
+\midrule
+llama1\_13b      &  30 &  28,284 &   229 &   103,575 &  2,235 &   101,340 &   352,121 & 3.40 & 0.0120\% & 0.4 &     3.0\\
+llama1\_65b      &  30 &  28,284 &   229 &   103,575 &  2,235 &   101,340 &   352,121 & 3.40 & 0.0120\% & 0.4 &     4.4\\
+llama3\_70b      &  35 &  32,189 &   264 &   120,030 &  2,605 &   117,425 &   407,576 & 3.40 & 0.0105\% & 0.5 &     5.4\\
+deepseek\_v3     & 136 & 111,070 &   971 &   452,421 & 10,079 &   442,342 & 1,527,767 & 3.38 & 0.0030\% & 1.3 &    18.7\\
+efficientnet\_b1 & 116 & 212,201 & 1,074 &   503,594 &  8,599 &   494,995 & 1,773,095 & 3.52 & 0.0017\% & 1.1 &   394.3\\
+efficientnet\_b2 & 116 & 212,201 & 1,074 &   503,594 &  8,599 &   494,995 & 1,773,095 & 3.52 & 0.0017\% & 1.2 &   255.4\\
+efficientnet\_b3 & 131 & 239,771 & 1,212 &   568,847 &  9,709 &   559,138 & 2,002,904 & 3.52 & 0.0015\% & 1.3 &   548.3\\
+efficientnet\_b4 & 161 & 294,911 & 1,488 &   699,353 & 11,929 &   687,424 & 2,462,522 & 3.52 & 0.0012\% & 1.5 &   586.4\\
+efficientnet\_b5 & 195 & 357,499 & 1,801 &   847,356 & 14,445 &   832,911 & 2,983,807 & 3.52 & 0.0010\% & 1.6 & 1,320.1\\
+efficientnet\_b6 & 225 & 412,639 & 2,077 &   977,862 & 16,665 &   961,197 & 3,443,425 & 3.52 & 0.0009\% & 1.8 & 1,469.1\\
+efficientnet\_b7 & 274 & 502,797 & 2,528 & 1,191,118 & 20,291 & 1,170,827 & 4,194,519 & 3.52 & 0.0007\% & 2.1 & 2,506.5\\
+sd15\_unet       & 346 & 664,221 & 3,251 & 1,533,481 & 25,619 & 1,507,862 & 5,416,291 & 3.53 & 0.0005\% & 2.6 & 2,427.0\\
+\bottomrule
+\end{tabular}
+\end{adjustbox}
+\end{sheettable}
+\tnote{Three things are worth reading off this table. The programs are
+extremely sparse, about 3.4 to 3.5 nonzeros per row at every scale, which is
+what a program built from one-hots, epigraphs and two-term McCormick envelopes
+looks like. Rows outnumber variables roughly three to one, because most of the
+content is bounding rows rather than new decisions. And solve time does not
+track size: EfficientNet-B1 is a quarter of SD-UNet's size yet takes 394
+seconds against 2,427, because what costs time is the branch tree and the
+degeneracy, not the row count.}
+\tnote{On reproduction: the four LLM programs now carry one more inequality row
+than their reports, because the SRAM-macro gate row was added at 19:00 on
+2026-09-21, after those four runs. EfficientNet and SD-UNet match exactly.
+Every certificate value reproduced to every printed digit, for example
+Llama-1 13B at $L=14047.098659307783$ ms and $U=14055.489119933172$ ms.}
+
+% ===================================================== INPUTS
+\section{Timeloop and Vizier no longer in the Loop \chipM}
+\lede{No mapper and no black-box search
+runs inside the optimization.}
+
+\begin{tcbraster}[raster columns=2,raster column skip=5pt,raster equal height,
+  raster before skip=4pt,raster after skip=4pt]
+\begin{tcolorbox}[cardstyle,breakable=false]
+\stepbox{offline, once}{Timeloop}{Native mapper at search depth 1000 builds an
+implementation library per workload. 40,922 records are cached on this host
+across the twelve libraries.}
+\end{tcolorbox}
+\begin{tcolorbox}[cardstyle,breakable=false]
+\stepbox{offline, once}{Contract}{Task shape, model config, numerics, accuracy
+menu and routing statistics, with source hashes.}
+\end{tcolorbox}
+\end{tcbraster}
+
+\begin{tcbraster}[raster columns=3,raster column skip=5pt,raster equal height,
+  raster before skip=0pt,raster after skip=6pt]
+\begin{tcolorbox}[cardstyle,breakable=false,colframe=accent,
+  borderline west={2pt}{0pt}{accent}]
+\stepbox{in the loop}{Joint LP}{Reads cached records as fixed coefficients.
+Chooses chip and schedule together.}
+\end{tcolorbox}
+\begin{tcolorbox}[cardstyle,breakable=false,colframe=accent,
+  borderline west={2pt}{0pt}{accent}]
+\stepbox{in the loop}{Branch tree}{Bandwidth, then PE type by memory
+technology, each node its own LP.}
+\end{tcolorbox}
+\begin{tcolorbox}[cardstyle,breakable=false,colframe=accent,
+  borderline west={2pt}{0pt}{accent}]
+\stepbox{in the loop}{Recovery and gates}{Legal array multiples and bank
+geometry, six gates, exact lift, re-solve at the fixed chip.}
+\end{tcolorbox}
+\end{tcbraster}
+
+\qa{\vno{not in the loop}Timeloop}{%
+Timeloop is referenced only by the library builder, the replay checker and the
+schedule evaluator. The four modules that run during a solve, \idt{run_e2e.py},
+\idt{joint_lp.py}, \idt{lp_eval.py} and \idt{sched_eval.py}, mention it only in
+comments explaining which Timeloop dataspace a coefficient came from. A library
+is built once per workload, then every solve reads it. Library records on this
+host: DeepSeek 5,196, EfficientNet 3,640 each, Llama 2,215 to 2,458, SD-UNet
+3,358.}
+
+\qa{\vno{not in the loop}Vizier}{%
+There is no Vizier import anywhere in the solve path. The only occurrences in
+the design package are in the baseline builder, which calls
+\idt{vizier_full.scale_tl_to_bw} as the published baseline's evaluator, not as
+a search. Vizier did drive the older published pipeline, where it sampled chips
+and each trial was evaluated separately, and it was last used that way for the
+SD-UNet experiment of 2026-09-20. In the current design the LP sizes the chip,
+which is the whole point: putting a sampler around it would move hardware back
+outside the program.}
+
+\qa{\vpart{designed, not yet wired}The outer loop}{%
+The planned role for a proposer is narrow: read the solved program's duals and
+reduced costs, propose new \emph{implementations} to add to the library, and
+let the LP price them. It never picks hardware, batch size or budgets. Nothing
+of this has run yet, and the stopping rule is deliberately not ``the proposer
+found nothing''.}
+
+% ===================================================== MODELS
+\section{Models that have been run \chipR}
+\lede{Twelve workloads, all twelve designed end to end with the frozen Stage-1
+program, all passing six of six physical gates. Uniform INT8 W8A8 with an
+8-bit KV cache on both the design and the baseline, so no quantization gain
+hides inside a co-design number.}
+
+\begin{sheettable}{Task definition and the recovered chip, per workload. TPU-v3 reference for scale: 65,536 MACs, 900 GB/s, 32 MiB on-chip, \mmsq{132.2} in this area model.}
+\begin{adjustbox}{max width=\linewidth}
+\begin{tabular}{L l N N N l N l N N}
+\toprule
+\thd{Workload} & \thd{Task} & \thd{Tiles} & \thd{MACs} & \thd{vs TPU-v3}
+ & \thd{PE type} & \thd{GB/s} & \thd{Memory} & \thd{On-chip MiB} & \thd{Gates}\\
+\midrule
+deepseek\_v3     & B 32, prompt 4096, 512 tokens & 738 & 188,928 & 2.88\tx & \mono sq16x16, 256 KiB     & 3,200 & \mono HBM  & 200.5 & 6/6\\
+llama1\_13b      & B 32, prompt 1536, 512 tokens & 789 & 201,984 & 3.08\tx & \mono sq16x16, 256 KiB     & 3,200 & \mono HBM  & 199.2 & 6/6\\
+llama1\_65b      & B 32, prompt 1536, 512 tokens & 789 & 201,984 & 3.08\tx & \mono sq16x16, 256 KiB     & 3,200 & \mono HBM  & 199.2 & 6/6\\
+llama3\_70b      & B 32, prompt 4096, 512 tokens & 742 & 189,952 & 2.90\tx & \mono tcgen05\_32x8, 256 KiB & 3,200 & \mono HBM  & 200.5 & 6/6\\
+sd15\_unet       & 50 denoising steps, UNet batch 2 & 877 & 224,512 & 3.43\tx & \mono sq16x16, 256 KiB   & 1,800 & \mono GDDR & 244.1 & 6/6\\
+efficientnet\_b1 & one forward pass, batch 1     & 941 & 240,896 & 3.68\tx & \mono sq16x16, 256 KiB     & 2,400 & \mono HBM  & 236.4 & 6/6\\
+efficientnet\_b2 & one forward pass, batch 1     & 940 & 240,640 & 3.67\tx & \mono wgmma8x32, 256 KiB   & 2,400 & \mono HBM  & 236.3 & 6/6\\
+efficientnet\_b3 & one forward pass, batch 1     & 938 & 240,128 & 3.66\tx & \mono wgmma8x32, 256 KiB   & 2,400 & \mono HBM  & 236.3 & 6/6\\
+efficientnet\_b4 & one forward pass, batch 1     & 956 & 244,736 & 3.73\tx & \mono wgmma8x32, 256 KiB   & 1,800 & \mono HBM  & 244.0 & 6/6\\
+efficientnet\_b5 & one forward pass, batch 1     & 953 & 243,968 & 3.72\tx & \mono wgmma8x32, 256 KiB   & 1,800 & \mono HBM  & 243.9 & 6/6\\
+efficientnet\_b6 & one forward pass, batch 1     & 928 & 237,568 & 3.62\tx & \mono wgmma8x32, 256 KiB   & 1,800 & \mono GDDR & 244.0 & 6/6\\
+efficientnet\_b7 & one forward pass, batch 1     & 931 & 238,336 & 3.64\tx & \mono wgmma8x32, 256 KiB   & 1,800 & \mono GDDR & 243.9 & 6/6\\
+\bottomrule
+\end{tabular}
+\end{adjustbox}
+\end{sheettable}
+\tnote{The LP is not told which PE aspect to prefer. It chose square 16x16
+tiles for the LLMs and SD-UNet, the tall 8x32 aspect for EfficientNet-B2
+upward, and the 32x8 aspect for Llama-3 70B, where that choice was certified to
+matter: the same program relaxed to 124.9 seconds with \idt{tcgen05_32x8}
+against 135.9 with \idt{wgmma8x32} and 145.2 with \idt{sq16x16}.}
+
+\subsection{What exists beyond Stage 1}
+\begin{tight}
+\item \textbf{\color{ink}Stage 2} \chipN{} added the quantization and sparsity
+families on three workloads: Llama-1 13B gained 1.37\tx{} over its Stage-1
+design with W4 plus 4-bit KV, Llama-1 65B 1.24\tx, and Llama-3 70B only
+1.014\tx{} because W4 is not admitted for it.
+\item \textbf{\color{ink}The v5 master program} is merged and gated, 18 of 18
+gate checks passed, and its campaign ran on the two A100 pods. \chipL{} Those
+outputs lived in \idt{e2e/v5/} on the pods, no surviving host holds a copy, and
+the pods now refuse connections. The code, the contracts and the libraries
+survive, so the campaign is repeatable; the results are not recoverable.
+\end{tight}
+
+% ===================================================== PERFORMANCE
+% \section{Performance \chipR}
+% \lede{Two baselines are in play, and the gap between them is the single most
+% important caveat on this page. Quote the one you mean.}
+
+% \begin{callW}
+% \ct{Read this before quoting a speedup}
+% \textbf{Baseline A} is the published recipe. Its Timeloop runs used a mapping
+% constraint that places work on only one axis of the PE array, built from an
+% 8x8 reference rescaled as if it had 256 MACs, so its compute term is about 32
+% times the full-array ideal. It inflates every speedup by roughly seven to ten
+% times.
+% \par\vspace{5pt}
+% \end{callW}
+
+% \needspace{80mm}
+% \begin{vizbox}[breakable=false]
+% \viztitle{Speedup over TPU-v3, by baseline convention}{Same axis, same unit,
+% two baselines. One linear scale from 0 to 100\tx.}
+% \vlegend{\swatch{stwo}\ vs baseline A, the published recipe \qquad
+%          \swatch{sone}\ vs the same-evaluator TPU-v3-like chip}
+% \speedrow{deepseek\_v3}{30.60}{30.60\tx}{4.20}{4.20\tx, +320\%}
+% \speedrow{llama1\_13b}{37.74}{37.74\tx}{3.75}{3.75\tx, +275\%}
+% \speedrow{llama1\_65b}{35.29}{35.29\tx}{3.63}{3.63\tx, +263\%}
+% \speedrow{llama3\_70b}{44.96}{44.96\tx}{4.76}{4.76\tx, +376\%}
+% \speedrow{sd15\_unet}{96.78}{96.78\tx}{9.49}{9.49\tx, +849\%}
+% \speedrow{efficientnet\_b7}{65.85}{65.85\tx}{10.44}{10.44\tx, +944\%}
+% \baraxis
+% \tnote{Baseline A figures are from the twelve reports. Same-evaluator figures
+% are from the notes of 2026-09-22; the EfficientNet family spans 6.13\tx{} at
+% B1 to 10.44\tx{} at B7.}
+% \end{vizbox}
+
+\subsection{Prefill against decode}
+{\color{ink2}The task is one prefill pass over the whole prompt followed by the
+generation of 512 tokens, and the split between the two is not similar across
+models. Llama-3 70B is 85\% prefill. DeepSeek-V3 is 59\% decode.\par}
+\vspace{6pt}
+
+\needspace{50mm}
+\begin{vizbox}[breakable=false]
+\viztitle{Where the task's milliseconds go}{Share of total latency, on the
+recovered design. Values are milliseconds.}
+\vlegend{\swatch{sone}\ prefill \qquad
+         \swatch{stwo}\ decode, 512 tokens in four context bins}
+\meterrow{deepseek\_v3}{136,204 ms total}{40.86}{55,653 \textperiodcentered{} 40.9\%}{80,551 \textperiodcentered{} 59.1\%}
+\meterrow{llama1\_13b}{14,055 ms total}{56.84}{7,988 \textperiodcentered{} 56.8\%}{6,067 \textperiodcentered{} 43.2\%}
+\meterrow{llama1\_65b}{61,081 ms total}{58.47}{35,716 \textperiodcentered{} 58.5\%}{25,365 \textperiodcentered{} 41.5\%}
+\meterrow{llama3\_70b}{126,337 ms total}{85.02}{107,412 \textperiodcentered{} 85.0\%}{18,925 \textperiodcentered{} 15.0\%}
+\end{vizbox}
+
+\begin{sheettable}{Per-phase latency, utilization and the speedup each phase earns against baseline A.}
+\begin{adjustbox}{max width=\linewidth}
+\begin{tabular}{L N N N N N N N N}
+\toprule
+\thd{Workload} & \thd{Prefill ms} & \thd{Decode ms} & \thd{Prefill MFU}
+ & \thd{Decode MFU} & \thd{Prefill x} & \thd{Decode x} & \thd{Total x}
+ & \thd{Tokens/s}\\
+\midrule
+deepseek\_v3 &  55,652.8 & 80,551.5 & 0.617 & 0.083 & 62.87\tx &  8.31\tx & 30.60\tx &   120.3 (re-run)\\
+llama1\_13b  &   7,988.5 &  6,067.0 & 0.406 & 0.181 & 52.47\tx & 18.35\tx & 37.74\tx & 1,165.7\\
+llama1\_65b  &  35,715.8 & 25,364.7 & 0.455 & 0.215 & 45.11\tx & 21.46\tx & 35.29\tx &   268.2\\
+llama3\_70b  & 107,412.3 & 18,925.0 & 0.474 & 0.342 & 47.17\tx & 32.39\tx & 44.96\tx &   129.7\\
+sd15\_unet   & \multicolumn{2}{c}{\mono one denoising phase, 230.6} & \multicolumn{2}{c}{\mono 0.776} & \multicolumn{2}{c}{\mono n/a} & 96.78\tx & n/a\\
+\multicolumn{1}{@{}l}{\mono efficientnet\_b1 to b7} & \multicolumn{2}{c}{\mono single pass, 0.0129 to 0.3336} & \multicolumn{2}{c}{\mono 0.221 to 0.475} & \multicolumn{2}{c}{\mono n/a} & \multicolumn{1}{r}{\mono 34.32\tx{} to 65.85\tx} & n/a\\
+\bottomrule
+\end{tabular}
+\end{adjustbox}
+\end{sheettable}
+
+\begin{callA}
+\ct{The finding the phase split carries}
+Prefill reaches a utilization of 0.41 to 0.62 and earns 45\tx{} to 63\tx{}
+against baseline A. Decode reaches 0.083 to 0.342 and earns 8\tx{} to 32\tx.
+Decode is bound by bytes streamed per token, not by arithmetic, and on
+DeepSeek-V3 that traffic is dominated by mixture-of-experts weight reload
+rather than by the KV cache, whose latent attention keeps its cache small. The
+same program says so in the utilization column: 0.083 on DeepSeek decode is
+the memory wall, measured.
+\end{callA}
+
+\subsection{What the hardware is actually worth \chipN}
+{\color{ink2}The same-evaluator totals decompose into a software factor
+measured on a TPU-v3 chip.\par}
+
+\begin{sheettable}{Decomposition recorded 2026-09-22. Equal-area runs re-optimize at \mmsq{132.2}, the TPU-v3-like chip's own area.}
+\begin{tabular}{L N N N N}
+\toprule
+\thd{Workload} & \thd{Total (re-run)} & \thd{Software on TPU-v3}
+ & \thd{Modeled Hardware at \mmsq{600}} & \thd{Modeled Hardware at equal area}\\
+\midrule
+deepseek\_v3 & 4.20\tx & 1.18\tx & 3.90\tx & 1.12\tx\\
+llama1\_13b  & 3.75\tx & 1.13\tx & 3.63\tx & 1.12\tx\\
+llama1\_65b  & 3.63\tx & 1.12\tx & 3.55\tx & 1.18\tx\\
+llama3\_70b  & 4.76\tx & 1.16\tx & 4.50\tx & 1.23\tx\\
+sd15\_unet   & 9.49\tx & 2.91 (need to re-run)\tx & 3.26\tx & not run\\
+\multicolumn{1}{@{}l}{\mono efficientnet\_b1 to b7} & 6.13 to 10.44\tx & 1.95 to 2.97\tx & 2.74 to 3.52\tx & not run\\
+\bottomrule
+\end{tabular}
+\end{sheettable}
+\tnote{On a TPUv3 chip the scheduler buys very little for the LLMs, and more for SD-UNet, where fusion,
+residency and mapping choice have room to work.}
+
+% ===================================================== KV
+\section{KV cache active across timesteps\chipR}
+\lede{Yes. It is modelled per decode step, it grows with context inside the
+task, and its on-chip window is a decision the program makes rather than a
+parameter it is handed.}
+
+\qa{\vyes{active}Four context bins per task, carried through the objective}{%
+Generation of 512 tokens is modelled in four context bins, so the attention
+cost is charged against a growing history rather than one average length. The
+reports carry a separate latency for each bin, and attention compute is charged
+over the history, not over one token.}
+
+\qa{\vyes{a decision}The on-chip KV window}{%
+Capacity rows \idt{kv_window_capacity} and \idt{kv_window_le_format} make the
+resident fraction of the cache a variable, bounded by the chosen numeric
+format, competing with weights and activations for the same on-chip bytes. The
+window is time-multiplexed by layer, so one layer's worth of positions is
+resident at a time.}
+
+\qa{\vpart{conventions to quote}Lossless, with no prefix credit}{%
+The KV budget is pinned to the full history, so no eviction policy is assumed.
+The prefix-cache reuse credit is switched off, after it was found to cancel
+essentially all decode KV traffic from a 0.6\% hit rate. Free eviction, which
+had discarded positions regardless of context, was removed as well.}
+
+\begin{sheettable}{Decode latency per context bin, and the fraction of the KV cache the design keeps on chip in each bin.}
+\begin{adjustbox}{max width=\linewidth}
+\begin{tabular}{L l N N N N N N N}
+\toprule
+\thd{Workload} & \thd{Attention} & \thd{Bin 0 ms} & \thd{Bin 1 ms}
+ & \thd{Bin 2 ms} & \thd{Bin 3 ms} & \thd{Growth}
+ & \thd{KV on chip, bin 0} & \thd{bin 3}\\
+\midrule
+llama1\_13b  & MHA, 400 KiB/token  &  1,415.9 &  1,483.1 &  1,550.4 &  1,617.6 & +14.2\% & 9.79e-5 & 7.89e-5\\
+llama1\_65b  & MHA                 &  6,018.4 &  6,233.6 &  6,448.8 &  6,663.9 & +10.7\% & 3.06e-5 & 2.47e-5\\
+llama3\_70b  & GQA, 160 KiB/token  &  4,580.3 &  4,829.7 &  4,615.6 &  4,899.4 &  +7.0\% & 7.23e-4 & 6.62e-4\\
+deepseek\_v3 & MLA, latent cache   & 19,960.2 & 20,020.9 & 20,403.8 & 20,166.6 &  +1.0\% & 3.59e-3 & 3.28e-3\\
+\bottomrule
+\end{tabular}
+\end{adjustbox}
+\end{sheettable}
+\tnote{The growth column is the honest signature of a live KV cache:
+multi-head attention at 400 KiB per token makes Llama-1 13B's last bin 14.2\%
+slower than its first, while DeepSeek's latent attention grows 1.0\% because
+its cache is tiny and its decode cost sits in expert weight reload instead.
+Llama-3 70B is not monotone across bins, which is the mode mix changing between
+bins rather than noise. The resident fractions are small on every workload, so
+the program is choosing to spend its on-chip bytes on weights and activations
+rather than on the cache, and saying so with a number.}
+
+% ===================================================== SOLVE
+\section{How it is solved \chipM}
+\lede{One LP solver, called many times, inside a shallow branch and bound whose
+branches are the discrete choices of the chip. There is no mixed-integer solver
+anywhere in the pipeline.}
+
+\subsection{What branch and bound is}
+{\color{ink2}Branch and bound searches a discrete space without enumerating it.
+Relax the discrete choices so the problem becomes a linear program and solve
+that: the answer is a \emph{lower bound} on the true optimum, because the
+relaxation can do anything the real problem can and more. If the relaxation
+happens to come out discrete, it is the answer and the search is over.
+Otherwise pick an undecided choice and \emph{branch}: make one child problem
+per value, each a new LP with that value pinned. Any complete design found
+along the way gives an \emph{upper bound}, the incumbent. A child whose own
+lower bound is already worse than the incumbent can be discarded without being
+explored, since nothing inside it can beat what is already in hand, and that
+pruning is what keeps the tree small. The search ends when the best remaining
+lower bound is close enough to the incumbent, and the pair of numbers is the
+certificate.\par}
+
+\subsection{This program's tree}
+\begin{tight}
+\item \textbf{\color{ink}Root.} Solve the full relaxation. If the bandwidth
+selector comes out integral and the gap is within the tolerance, stop. This
+happened on all four LLM workloads, where the reports record ``root bandwidth
+integral''.
+\item \textbf{\color{ink}First level, bandwidth.} Eight delivered-bandwidth
+points from 225 to 3,200 GB/s, one pinned LP each. Pruning is visible in the
+reports: on EfficientNet-B1 the 225, 450 and 675 GB/s branches were cut with
+``pruned: bound 0.0379892 $\ge$ U''.
+\item \textbf{\color{ink}Second level, PE type by memory technology.} Eighteen
+nodes, three PE aspects by two slice sizes by three memory technologies,
+entered only when the gap is still open. Llama-3 70B and SD-UNet both needed
+it, and SD-UNet pruned ten of its eighteen nodes on bounds.
+\item \textbf{\color{ink}Sub-branching.} In the v5 program a solved branch with
+an open gap is split again on its most fractional remaining selector, KV
+format, block, feature or converter, two levels deep.
+\item \textbf{\color{ink}Upper bound.} Every candidate is turned into a real
+chip: legal array multiples and SRAM bank geometry, the six gates checked, the
+reciprocals and products set to their true values and every original row
+re-checked, then the fixed-chip scheduling LP re-solved. Incumbents are carried
+across branches so the upper bound never gets worse.
+\item \textbf{\color{ink}Lower bound.} The safe dual bound of the relaxation,
+with duals sign-clipped on one-sided rows, or the minimum over branches when
+the enumeration is complete.
+\end{tight}
+
+\begin{sheettable}{Certificates as reported. The gap is what the design is guaranteed to be within.}
+\begin{tabular}{L N N N l}
+\toprule
+\thd{Workload} & \thd{Lower bound} & \thd{Upper bound} & \thd{Gap}
+ & \thd{Branching needed}\\
+\midrule
+llama1\_13b      & 14,047.10 ms & 14,055.49 ms & 0.06\% & none, root integral\\
+llama1\_65b      & 61,005.97 ms & 61,080.51 ms & 0.12\% & none, root integral\\
+deepseek\_v3     & 135,919.79 ms & 136,204.25 ms & 0.21\% & none, root integral\\
+llama3\_70b      & 124,883.99 ms & 126,337.33 ms & 1.15\% & PE type by memory technology, 18 nodes\\
+efficientnet\_b1 & 0.012820 ms & 0.012927 ms & 0.83\% & bandwidth, 3 of 8 pruned\\
+efficientnet\_b7 & 0.332239 ms & 0.333645 ms & 0.42\% & bandwidth, 8 nodes\\
+sd15\_unet       & 223.26 ms & 230.58 ms & 3.17\% & bandwidth, then 18 nodes, 10 pruned\\
+\bottomrule
+\end{tabular}
+\end{sheettable}
+\tnote{EfficientNet B2 to B6 land between 0.25\% and 0.54\%. SD-UNet's 3.17\%
+is the loosest in the set and is mode rounding rather than chip choice.}
+
+\subsection{Every relaxation technique in the program}
+\begin{tcbraster}[raster columns=2,raster column skip=5pt,raster equal height=rows,
+  raster before skip=5pt,raster after skip=4pt]
+\begin{tcolorbox}[cardstyle,breakable=false]
+{\sffamily\bfseries\fontsize{10}{12}\selectfont McCormick envelopes}\par\vspace{3pt}
+{\color{ink2}\fontsize{8.8}{11}\selectfont Used only where a decision
+multiplies a decision, which here is a residency credit times a mode or
+bandwidth selector. For $z=xy$ with $x\in[l,u]$ and $y\in[p,q]$ the four rows
+are the standard envelope, two lower and two upper. This is the dominant source
+of the remaining gap.\par}
+\end{tcolorbox}
+\begin{tcolorbox}[cardstyle,breakable=false]
+{\sffamily\bfseries\fontsize{10}{12}\selectfont Perspective tangent cuts}\par\vspace{3pt}
+{\color{ink2}\fontsize{8.8}{11}\selectfont Reciprocal hardware cost, time as
+demand over rate, outer-approximated by tangent planes at geometric anchors.
+Each plane is valid, so the bound is never wrong, only loose, and adding
+anchors tightens it. This is what keeps MACs and bandwidth continuous without a
+grid of allowed chips.\par}
+\end{tcolorbox}
+\begin{tcolorbox}[cardstyle,breakable=false]
+{\sffamily\bfseries\fontsize{10}{12}\selectfont Epigraph variables}\par\vspace{3pt}
+{\color{ink2}\fontsize{8.8}{11}\selectfont Twelve families of them. Every
+maximum in the cost model, compute against memory, host link against local
+service, is a set of lower-bounding rows on one time variable rather than a
+nonlinear max.\par}
+\end{tcolorbox}
+\begin{tcolorbox}[cardstyle,breakable=false]
+{\sffamily\bfseries\fontsize{10}{12}\selectfont One-hot selectors with disaggregated products}\par\vspace{3pt}
+{\color{ink2}\fontsize{8.8}{11}\selectfont PE type, memory technology,
+bandwidth, block, KV format and converter are one-hot. Selector-times-continuous
+products are disaggregated exactly, per branch, rather than written as a single
+bytes-over-bandwidth product, which is where an earlier version leaked a large
+spurious saving.\par}
+\end{tcolorbox}
+\begin{tcolorbox}[cardstyle,breakable=false]
+{\sffamily\bfseries\fontsize{10}{12}\selectfont Chord rows, for the inner bound}\par\vspace{3pt}
+{\color{ink2}\fontsize{8.8}{11}\selectfont The tangent planes bound from
+outside. Chords bound from inside, and are only valid once every selector is
+pinned, so they belong to the achievable side of the sandwich rather than to
+the certified lower bound.\par}
+\end{tcolorbox}
+\begin{tcolorbox}[cardstyle,breakable=false]
+{\sffamily\bfseries\fontsize{10}{12}\selectfont Exact lift}\par\vspace{3pt}
+{\color{ink2}\fontsize{8.8}{11}\selectfont The step that makes the upper bound
+trustworthy: reciprocals and products are set to their true values and every
+original row is re-checked. Residuals land around $10^{-16}$ when it passes. An
+LP that converged is not evidence that its products were exact.\par}
+\end{tcolorbox}
+\end{tcbraster}
+
+% ===================================================== BORROWED
+\section{Shape Aggregation \chipN}
+\lede{The following is new and semi-experimental.}
+
+\begin{tight}
+\item \textbf{\color{ink}Shape aggregation.} We cluster operation instances and into unique operation
+cluster shapes: the shape-invariant part of the program, tiling, roofline,
+envelopes and hardware, is built once per unique shape and weighted by
+multiplicity, while the time-indexed residency stays per instance. On
+DeepSeek-V3 that collapses 903 operations to 13 unique shapes, which is what
+makes the program faster to solve. But may limit search space. Further analysis needed.
+\item \textbf{\color{ink}Dual-guided rounding.} The row duals guide which fractional selector to round
+and which branch to open first.
+\item \textbf{\color{ink}The shadow-price outer loop.} Traditionally the rule for reading
+prices off a solved relaxation and acting on them becomes the template for the
+planned implementation designer, which reads duals and proposes library columns.
+\end{tight}
+\tnote{}
+
+% ===================================================== OPEN
+\section{Next Steps as of \sheetdata}
+\lede{Things to think about and action plan.}
+
+\begin{tight}
+\item \textbf{\color{ink}Turn on inference acceleration features from Appendix C of Compiler Doc.} Stage 1 is
+complete for all twelve workloads. Test all inference specific features, freeze hardware variables for A100/H100/B200. 
+\item \textbf{\color{ink} Rebuild Solver to iterate faster.} Current solver can stall. Look into porting more ideas from OCS into CHEETAH.
+\item \textbf{\color{ink}Inference Acceleration.} It is the memory wall, and the byte-reduction work that would
+move it , aka targets expert weight streams rather than the KV cache.
+\item \textbf{\color{ink}Training Acceleration.} See next section.
+\end{tight}
+
+
+% ===================================================== TRAINING ROADMAP
+\clearpage
+\section{CHEETAH-compiler: DeepSeek training on $N$ B200s \chipN}
+\lede{A proposed development plan for a fixed cluster. The hardware is given;
+the compiler jointly chooses the complete repeated training schedule and emits
+an executable distributed plan. The items below are targets, not measured B200 results.}
+
+\begin{callA}
+\ct{Research thesis}
+Parallelism, expert placement, Blackwell kernels, activation retention,
+communication and microbatch scheduling compete for the same resources.
+Optimize them together over a complete training step, then check the emitted
+execution against the declared model and numerical contract.
+\end{callA}
+
+\subsection{Freeze the training contract}
+\begin{tight}
+\item Fix the exact DeepSeek configuration, optimizer and state precision,
+sequence length, non-padding global token batch, accumulation convention and
+allowed numerical error. Declare $N$, GPU memory available to the job, the
+NVLink domains and the inter-node network topology.
+\item Preserve the learned router, routed token assignments, token weights,
+optimizer-update boundaries and stochastic semantics in the first experiment.
+Expert replication must aggregate replica gradients and synchronize weights;
+it is an execution choice, not independent expert training.
+\item Compare complete synchronized training steps, including communication
+and optimizer updates. Verify loss, gradients and updated parameters against
+the reference within the stated tolerance, then check short-run training quality.
+\end{tight}
+
+\subsection{One complete, repeated training graph}
+\begin{card}
+\ct{Task vocabulary}
+Attention forward and backward; router and top-$k$; token permutation;
+dispatch; expert GEMM1, activation and GEMM2; combine; shared experts;
+activation-gradient tasks $B_X$; weight-gradient tasks $B_W$; gradient
+reduction/scatter; optimizer updates; retained-state transfers and recomputation.
+Separate $B_X$ from $B_W$ so weight-gradient work can move where dependencies allow.
+\end{card}
+The primary objective is full-step time at a fixed global batch:
+\[
+ \min T_{\mathrm{step}},\qquad
+ \mathrm{throughput}=\frac{\text{non-padding tokens per step}}{T_{\mathrm{step}}}.
+\]
+Within a legal accumulation window, a repeated microbatch schedule may minimize
+its initiation interval $II$. Charge fill, drain, reductions and the optimizer
+boundary explicitly: a low $II$ alone does not establish a faster training step.
+No forward task may read updated parameters before its declared update boundary.
+
+\subsection{Seven coupled decision families}
+\layer{01}{Module parallelism and topology}{Choose compatible DP, TP, EP, PP
+and CP layouts from a finite validated menu. Attention, shared experts and routed
+experts may use different layouts; charge every layout conversion and ensure all
+process groups fit the same physical cluster.}{\rowfam{parallelism}\rowfam{layout_conversion}\rowfam{topology}}
+\layer{02}{Communication as scheduled work}{Split dispatch, expert compute and
+combine into dependent chunks. Choose chunk size, transfer path, communication
+SM allocation, in-flight depth and buffering. Compare NCCL, DeepEP and custom
+transfer implementations only where their training semantics are validated.
+Model NVLink and inter-node links separately.}{\rowfam{dispatch}\rowfam{combine}\rowfam{link_capacity}}
+\layer{03}{Blackwell implementation columns}{Build measured forward, $dX$ and
+$dW$ expert GEMMs; MLA forward/backward; normalization/residual; router;
+permutation; gradient reduction and optimizer columns. Expose tiles, layouts,
+warp specialization, TMA pipelines, supported \idt{tcgen05}/TMEM usage,
+CTA clusters and fusion. Every column must have an emitter and a correctness check.}{\rowfam{implementation}\rowfam{tile}\rowfam{resource}}
+\layer{04}{Full training memory}{Jointly select retention, legal reload,
+recomputation, fused recomputation and optional offload. Include parameters,
+master weights, Adam moments, gradients, activations, dispatch buffers,
+communication scratch, attention state, RNG state and kernel workspace.
+HBM is the backing store on this target; ``spill'' must name its source tier.}{\rowfam{residency}\rowfam{rematerialization}\rowfam{capacity}}
+\layer{05}{Microbatch pipeline}{With the global batch fixed, choose microbatch
+size/count and legal overlap of forward, $B_X$, $B_W$ and communication.
+Search double/triple buffering and eventually modulo schedules, with explicit
+buffer lifetimes and update barriers.}{\rowfam{microbatch}\rowfam{precedence}\rowfam{buffer_lifetime}}
+\layer{06}{Expert placement and replication}{Place experts across the fixed
+cluster; optionally replicate hot experts inside a fast communication domain.
+Charge replica parameters, optimizer/gradient ownership, synchronization traffic
+and straggler load. Select among replicas without changing token-to-expert semantics.}{\rowfam{expert_placement}\rowfam{replication}\rowfam{load}}
+\layer{07}{Global resource schedule}{Choose task start times and implementation
+combinations under measured shared-resource envelopes. Communication and compute
+can overlap only when SM, HBM, link, scratch and dependency constraints permit;
+concurrent latency is profiled rather than inferred from isolated peaks.}{\rowfam{schedule}\rowfam{overlap}\rowfam{contention}}
+
+\clearpage
+\subsection{Program structure and solver roles}
+\lede{Use three timescales to keep the search tractable. Joint optimization is
+the goal; staged search is an implementation strategy whose restrictions must
+be stated when reporting a bound.}
+\qa{Slow structural search}{Choose compatible parallelism, placement,
+replication, region partition, microbatch configuration and column menus.
+Use LP relaxations with branching/refinement for discrete choices. OCS solves
+continuous relaxations; it does not itself supply integer search.}
+\qa{Repeated-step planning}{Given structural choices, solve the structured
+schedule and memory relaxation through operator products. Recover a discrete
+feasible schedule, check all original constraints and replay it. A restricted
+subproblem bound does not certify the unrestricted global search.}
+\qa{Cheap runtime adaptation}{Use a compiled portfolio or bounded local policy
+for route-count fluctuations, replica assignment and queue admission. Prices
+may guide choices, but correctness and capacity guards remain explicit. Include
+fallback cost; avoid a large optimization solve on every training iteration.}
+
+\begin{card}
+\ct{Capacity and shared-resource constraints}
+For every GPU $g$ and event time $t$,
+\[
+ M_g^{\mathrm{params}}+M_g^{\mathrm{optimizer}}+M_g^{\mathrm{grad}}
+ +M_g^{\mathrm{live}}(t)+M_g^{\mathrm{comm}}(t)
+ +M_g^{\mathrm{workspace}}(t)\le H_g.
+\]
+Include temporary allocations and replicated state once, under explicit
+ownership rules. Concurrent communication and compute allocations satisfy
+$n_g^{\mathrm{comm}}+n_g^{\mathrm{compute}}\le n_g^{\mathrm{SM}}$;
+SMEM, TMEM, registers and warp limits are checked at their hardware scopes.
+Link constraints are per link/domain, with collective synchronization and
+transfer dependencies represented in the graph.
+\end{card}
+
+\subsection{What OCS can contribute}
+\begin{tight}
+\item \textbf{\color{ink}Operator-native planning.} Preserve forward/adjoint
+access through program construction, normalization, solving and reporting.
+Independently check the recovered plan and any claimed objective bound.
+\item \textbf{\color{ink}Batched portfolios and warm starts.} Solve related
+sequence lengths, microbatch menus, route-load scenarios and memory budgets.
+Use observed histograms and stress cases; marginal load percentiles alone need
+not describe a valid joint routing scenario.
+\item \textbf{\color{ink}Prices and sensitivities.} Read duals to identify
+valuable reductions in link traffic, workspace or kernel time on the fixed
+hardware. Treat sensitivities as local to the continuous model; discrete plan
+changes and degeneracy can invalidate a naive derivative.
+\item \textbf{\color{ink}Column generation.} Use reduced cost
+$\mathrm{RC}_j=c_j-\lambda^\top a_j$ under the declared sign convention to
+prioritize candidate kernels. Generate, verify, benchmark and insert a column,
+then re-solve. A language-model proposer remains outside the trusted checker.
+\end{tight}
+
+\subsection{A hierarchical Blackwell executor}
+\begin{callA}
+\ct{Execution boundary}
+A global plan drives attention, router/dispatch, expert forward, combine,
+attention backward, expert $dX$, expert $dW$, gradient communication and optimizer
+regions. Use CUDA graphs or a validated device controller between regions;
+use persistent kernels within regions where they improve measured performance.
+\end{callA}
+Within eligible regions, use TMA producers, tensor-core consumers, TMEM,
+explicit barriers, buffering and supported CTA clustering. Across GPUs, emit
+explicit communication tasks. Establish forward progress, dependency visibility
+and resource residency before enabling cross-region overlap; a whole-cluster
+single megakernel is not a prerequisite.
+
+\subsection{The overlap pattern to search}
+Allow the current microbatch's expert GEMMs to overlap a later microbatch's
+dispatch, an earlier microbatch's combine, and ready $dW$/gradient reductions.
+Attention from another ready layer can fill slack. This pattern is a candidate,
+not a policy imposed in advance: the optimizer must respect data readiness,
+collective ordering, contention, memory lifetimes and the parameter-version barrier.
+
+\clearpage
+\subsection{Bounds, prediction and measured execution}
+For a declared implementation menu and compatible numerical formats, construct
+valid lower bounds from unavoidable work, per-resource traffic and precedence:
+\[
+ L_{\mathrm{train}}=\max\left\{
+ \frac{F_{\min}}{\sum_g P_g},\;
+ \max_g\frac{B_{g,\min}^{\mathrm{HBM}}}{W_g^{\mathrm{HBM}}},\;
+ \max_{\ell}\frac{B_{\ell,\min}}{W_{\ell}},\;
+ T_{\mathrm{critical},\min},\;T_{\mathrm{imbalance},\min}
+ \right\}.
+\]
+The minima must be justified across legal choices; traffic from one selected
+plan is not automatically a global lower bound. Use actual topology and any
+required cut constraints. Distinguish this analytic floor from the checked
+relaxation bound $L_{\mathrm{model}}$, the feasible modeled plan time
+$U_{\mathrm{plan}}$, and measured time $T_{\mathrm{measured}}$.
+\begin{sheettable}{Three diagnostics; all interpreted within their declared execution and cost model.}
+\begin{tabular}{p{40mm}p{120mm}}
+\toprule
+\thd{Diagnostic} & \thd{Interpretation}\\
+\midrule
+$T_{\mathrm{baseline}}/L_{\mathrm{train}}$ & Available modeled headroom, if the floor is valid.\\
+$U_{\mathrm{plan}}/L_{\mathrm{model}}$ & Certified planning gap when both cover the same search space.\\
+$T_{\mathrm{measured}}/U_{\mathrm{plan}}$ & Realization error; check calibration, contention and runtime overhead.\\
+\bottomrule
+\end{tabular}
+\end{sheettable}
+
+\subsection{Development gates}
+\begin{tight}
+\item \textbf{\color{ink}1. Contract and baseline.} Freeze the target and build
+a tuned production baseline from the selected Megatron/DeepSpeed/DeepEP stack.
+Measure synchronized full steps, route histograms, memory peaks and stage times.
+\item \textbf{\color{ink}2. B200 calibration.} Profile the actual cluster;
+measure isolated and concurrent column costs. Do not reuse H100 coefficients
+without validation. Include the inter-node network when $N$ exceeds one domain.
+\item \textbf{\color{ink}3. Kernel and memory closure.} Qualify expert F/$dX$/$dW$,
+MLA F/B, dispatch/combine and optimizer paths. Implement full persistent-state
+accounting. Re-test joint rematerialization in a memory-binding training regime;
+the manuscript's earlier gain is evidence to reproduce, not a B200 prediction.
+\item \textbf{\color{ink}4. One-domain schedule.} Add microbatch and chunked
+communication scheduling; recover and replay feasible plans. Verify numerical
+semantics, capacity and deadlock-free repeated execution.
+\item \textbf{\color{ink}5. Cluster expansion.} Add expert placement/replication,
+compatible module-specific layouts and their conversions. Validate scaling on
+the actual $N$-B200 topology and stressed route loads.
+\item \textbf{\color{ink}6. Joint search and evaluation.} Integrate structural
+search, step planning and dual-guided column generation. Report compile/setup
+cost, amortization, modeled gaps and measured execution together.
+\item \textbf{\color{ink}7. Differentiable routing, separately.} Only after the
+semantics-preserving compiler works, study a plan-aware router with
+$\mathcal L(\theta,\ell)+\mu T^*(\ell)$. State the differentiability assumptions,
+relaxation and gradient estimator; evaluate model quality and time to target
+loss because this experiment changes training behavior.
+\end{tight}
+
+\subsection{Flagship experiment and ablations}
+\begin{card}
+\ct{Same cluster, same declared training contract}
+Compare a tuned production baseline with Blackwell columns, then add joint
+rematerialization, communication scheduling, placement/replication,
+module-specific layouts and the global schedule. Pair the waterfall with
+leave-one-out ablations and a matched staged planner using the same column
+library, so gains from kernels and gains from joint decisions can be distinguished.
+\end{card}
+Report non-padding tokens/s, synchronized step time, explicitly defined MFU,
+HBM/link bytes, exposed communication, idle SM time, peak memory, optimization
+time and amortization, checked modeled gap and realization error. Record run
+variance, routing stress behavior and numerical checks. For any router-changing
+extension, also report convergence and time to matched quality.
+
+\begin{callW}
+\ct{Status and scope}
+This section records a proposed fixed-B200 training direction informed by
+\emph{Compiler\_megakernel\_ICML2027}, especially its training graph,
+rematerialization and hardware-explicit execution columns. It asserts no new
+B200 measurements, no universal optimality and no completed solver capability.
+The INT8 inference conventions in the preceding program sheet do not apply to
+this training plan; its precision is part of the contract to be frozen.
+\end{callW}
+
+% ===================================================== FOOTER
+\vspace{14pt}
+{\color{ink}\hrule height 1.4pt}
+\vspace{7pt}
+{\mono\fontsize{7.6}{10}\selectfont\color{ink3}
+Sources. Program structure and sizes: \idt{systems/cheetah_joint/joint_lp.py}
+and a build-only probe run on kevin, \sheetdata. Performance, chips and
+certificates: the twelve \idt{*_e2e.json} reports of 2026-09-21 on kevin.
+Baseline decomposition and Stage-2 deltas: \idt{DESIGN_deepseek.md} sections 12
+to 14, 2026-09-22.\par\vspace{4pt}
+Numerics throughout are INT8 W8A8 with an 8-bit KV cache on both design and
+baseline. Latency is in milliseconds at the design's own clock. Speedups are
+ratios of task latency under one named baseline convention; percentages are the
+same ratios less one.\par\vspace{4pt}
+.
+Data measured \sheetdata, source last edited \sheetrev.\par}
+
+\end{document}
