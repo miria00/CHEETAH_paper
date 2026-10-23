@@ -1,0 +1,111 @@
+% ---------------------------------------------------------------------------
+% What the master program contains, and how a recovered design is scored.
+% Placed immediately after the capability matrix: the matrix says what prior
+% work cannot express; this says what our program does express, and how we
+% evaluate it now that the outer proposal loop is gone.
+% ---------------------------------------------------------------------------
+\section{What the program contains and how it is scored}
+\label{sec:program_contents}
+
+\subsection{Evaluating a design without a proposal loop}
+\label{sec:eval_without_vizier}
+
+Vizier proposed hardware configurations; the performance model and execution
+evaluator determined their scores. Removing the proposer does not remove that
+evaluator. The formulation minimizes modeled latency under hardware
+constraints, including area and power budgets, with compute tiles, bandwidth,
+SRAM and vector lanes as shared LP variables; discrete physical choices still
+require a supported hardware menu and a recovery step. For each recovered chip
+and schedule we report the quantities in \cref{tab:eval_metrics}.
+
+\begin{table}[t]
+\centering
+\small
+\caption{Quantities evaluated for each recovered chip and schedule.}
+\label{tab:eval_metrics}
+\begin{tabularx}{\linewidth}{@{}lX@{}}
+\toprule
+\textbf{Metric} & \textbf{Evaluation} \\
+\midrule
+Prefill     & Prompt execution latency and time to first output \\
+Decode      & Remaining generation latency and time per output token \\
+Total       & Actual full-task makespan \\
+Throughput  & Completed output tokens divided by elapsed time \\
+Perf/TDP    & Throughput divided by the chip's TDP \\
+Speedup     & Matched baseline latency divided by candidate latency \\
+\bottomrule
+\end{tabularx}
+\end{table}
+
+For a fixed amount of work these compose exactly,
+\begin{equation}
+\frac{(\mathrm{Perf}/\mathrm{TDP})_{\mathrm{design}}}
+     {(\mathrm{Perf}/\mathrm{TDP})_{\mathrm{baseline}}}
+=
+\frac{T_{\mathrm{baseline}}}{T_{\mathrm{design}}}\,
+\frac{\mathrm{TDP}_{\mathrm{baseline}}}{\mathrm{TDP}_{\mathrm{design}}},
+\label{eq:perf_tdp_decomp}
+\end{equation}
+so a latency objective does not by itself maximize the ratio. We obtain a
+performance/power tradeoff by solving across power budgets or hardware
+branches and comparing the recovered designs, rather than by optimizing
+\cref{eq:perf_tdp_decomp} directly.
+
+Three limits apply to every number reported this way. These are analytical
+execution results: physical timing and power require calibration against
+implementations, simulation or measurement. TDP is not average consumed power,
+so energy per inference needs a separate power calculation. And the accepted
+prefill result remains our reference point --- new total-inference claims
+require a matched workload and numerical contract, and decode's share must come
+out of the evaluated schedule rather than be imposed as a target fraction.
+
+\subsection{Features represented in the master}
+\label{sec:master_features}
+
+One implementation distinction matters for reading the results that follow. The
+master architecture carries several branches and extensions, and the serial-policy
+solver experiment of \cref{sec:experiments} does not activate all of them
+together. \cref{tab:master_features} is an inventory of the available
+formulations, not a claim that every row is exercised in every reported solve.
+
+\begin{table}[t]
+\centering
+\scriptsize
+\setlength{\tabcolsep}{4pt}
+\caption{Formulations represented in the master program. Rows marked
+\emph{extension} are implemented and tested but not activated in the
+serial-policy experiment.}
+\label{tab:master_features}
+\begin{tabularx}{\linewidth}{@{}lX@{}}
+\toprule
+\textbf{Feature} & \textbf{What it represents} \\
+\midrule
+Original paper V1 & Supplied complete configuration, placement, retention and rematerialization programs, preserving their original costs \\
+Independent mapping and tiling & Separate implementation choices for logical invocations, including different decode positions \\
+Buffering/dataflow modes & Choices supplied by each qualified implementation menu \\
+Batching & Compatible operations may share a batch implementation while retaining their individual identities \\
+Fusion & Supported fusion groups and fused kernel atoms, including SwiGLU variants \\
+Temporal scheduling & Start, work, finish and active state over event labels \\
+Dependency enforcement & Producer completion, operand readiness and control dependencies \\
+Routing causality & Expert work becomes available only after the relevant router dependency \\
+Time-dependent placement & Host, DRAM and SRAM presence throughout execution \\
+Retention and eviction & Keep useful data between consumers or release its storage \\
+Explicit transfers & Charged host$\leftrightarrow$DRAM and DRAM$\leftrightarrow$SRAM copies with source and destination obligations \\
+Weight residency/streaming & Retained weights versus supported streamed-weight implementations \\
+Streamed inputs/outputs & Qualified tile staging instead of requiring every operand/output to be fully resident \\
+KV across timesteps & KV production, persistence, subsequent reads, growth and declared terminal backing \\
+KV spill/restore & Host backing, reservations, transfer completion and readiness \emph{(extension)} \\
+Rematerialization & Recompute declared deterministic values, charging inputs, execution and temporary storage \\
+Typed representations/conversions & Distinct stored/runtime representations, conversion work, destination allocation and readiness \emph{(extension)} \\
+Capacity accounting & Live tensors, incoming copies, workspace, output reservations and conversion temporaries \\
+Shared resource accounting & Compute, vector, local-memory, bandwidth and host-link service \\
+Shared hardware co-design & One common hardware allocation for the execution \\
+Hardware constraints & Bounds plus area, peak-power and power-density proxies \\
+Linear relaxations & Reciprocal envelopes and product relaxations connecting hardware rates to service time \\
+\bottomrule
+\end{tabularx}
+\end{table}
+
+The program-sheet inventory and the conversion and spill/restore extension
+records document each row; \cref{tab:master_rows} gives the row families that
+realize them.
