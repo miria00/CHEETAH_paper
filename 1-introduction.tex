@@ -620,32 +620,6 @@ mechanisms that are usually described as competing amortizers, batching and
 speculation, are complementary here, precisely because batching amortizes so
 poorly under sparse routing.
 
-\paragraph{Why this program is hard to solve.}
-The difficulty is numerical rather than conceptual, and it is worth stating
-concretely before the formulation. A single captured DeepSeek-V3 MoE request
-expands to $15{,}826{,}069$ logical invocations. Written over the event axis,
-the master program for that workload reaches $4.92\times10^{8}$ columns and
-$8.93\times10^{8}$ rows, which we never form: it is carried as $113{,}552$ row
-recipes over $50{,}106$ axes in ten row families, and a candidate solution is
-checked against the original rows without materializing the matrix. Even the
-far smaller per-workload tiling instance is badly scaled rather than merely
-large. For DeepSeek-V3 it has $111{,}070$ columns, $1{,}527{,}769$ nonzeros at
-a density of $3.0\times10^{-5}$, $10{,}079$ equality rows, and a maximum row
-degree of $481$ against a maximum column degree of $141$---a few shared
-hardware columns touching nearly every row. Its coefficients span
-$1.25\times10^{-10}$ to $5.58\times10^{7}$, a dynamic range of
-$4.5\times10^{17}$ within one matrix, because the same rows carry $0/1$
-structural incidences, byte counts, and reciprocal hardware rates, and because
-the reciprocal envelopes and product relaxations that linearize
-rate\,$\times$\,traffic contribute nearly parallel constraints. A problem of
-this shape defeats off-the-shelf solvers: the scaling degrades the
-factorizations an interior-point method depends on, and assembling the
-constraint matrix is impossible at the full event horizon. We therefore solve
-it with a custom variant of OCS, an operator-splitting solver that touches the
-constraint operator only through matrix--vector products and never assembles
-it, and we certify the recovered point by exact rational verification against
-the original row families.
-
 We present the work as a progression, so that each formulation's contribution can be read on its own terms. Section~\ref{sec:related} positions CHEETAH against prior mapping, co-design, and compilation systems (Table~\ref{tab:capability-matrix}). Section~\ref{sec:methods} builds the formulation in rungs: CHEETAH-V0 (Section~\ref{sec:v0}) adds time-indexed placement and rematerialization to the static fusion ILP; V1 (Section~\ref{sec:v1}) brings tiling inside the program, using Pareto pruning to compress the raw tile space and McCormick envelopes to flatten the resulting bilinear coupling into a linear program; V2 adds memory sizing and tile-dependent residency; and V3 (Section~\ref{sec:v1}) promotes the hardware itself to a decision under a disaggregated perspective epigraph, with the solver (Section~\ref{sec:solver_vm}) and the LLM-guided outer loop closing the loop. Section~\ref{sec:experiments} reports the progressive gains across these rungs together with the same-silicon fixed-hardware study, each result grounded by roofline, MFU, and manufacturability validators; Section~\ref{sec:rtl_validation} replays the schedules on cycle-accurate RTL; Section~\ref{sec:tco} reads the outcome in FAST's own cost model; and the appendices carry the containment theory, the solver, and the deficit and sensitivity analyses.
 
 % In addition to efficiently enabling more globally optimized accelerator designs, we anticipate that future work may build off this foundation to implement custom Flash Attention type speedup mechanisms for individual hardware (such as RTX5090) and workloads (such as LLama70B) tractably within hours, as well as quickly and efficiently design custom accelerators for targeted inference tasks. 
